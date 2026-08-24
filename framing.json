@@ -1,0 +1,146 @@
+{
+  "Engagement Photos-02.jpg": {
+    "crop": [
+      0.14,
+      0.32,
+      0.94,
+      1.0
+    ],
+    "subject": [
+      0.05,
+      0.1,
+      0.96,
+      1.0
+    ]
+  },
+  "Engagement Photos-06.jpg": {
+    "subject": [
+      0.11,
+      0.14,
+      0.9,
+      1.0
+    ]
+  },
+  "Engagement Photos-13.jpg": {
+    "crop": [
+      0.32,
+      0.06,
+      0.9,
+      1.0
+    ],
+    "subject": [
+      0.14,
+      0.09,
+      0.83,
+      1.0
+    ]
+  },
+  "Engagement Photos-14.jpg": {
+    "crop": [
+      0.11,
+      0.2,
+      0.72,
+      1.0
+    ],
+    "subject": [
+      0.05,
+      0.13,
+      0.9,
+      1.0
+    ]
+  },
+  "Engagement Photos-15.jpg": {
+    "crop": [
+      0.1,
+      0.36,
+      0.86,
+      1.0
+    ],
+    "subject": [
+      0.06,
+      0.1,
+      0.93,
+      1.0
+    ]
+  },
+  "Engagement Photos-16.jpg": {
+    "crop": [
+      0.02,
+      0.18,
+      0.8,
+      1.0
+    ],
+    "subject": [
+      0.08,
+      0.07,
+      0.9,
+      1.0
+    ]
+  },
+  "Engagement Photos-17.jpg": {
+    "subject": [
+      0.0,
+      0.17,
+      0.95,
+      1.0
+    ]
+  },
+  "Engagement Photos-18.jpg": {
+    "subject": [
+      0.16,
+      0.19,
+      0.97,
+      1.0
+    ]
+  },
+  "Engagement Photos-19.jpg": {
+    "subject": [
+      0.06,
+      0.21,
+      0.93,
+      1.0
+    ]
+  },
+  "Engagement Photos-23.jpg": {
+    "crop": [
+      0.14,
+      0.26,
+      0.9,
+      1.0
+    ],
+    "subject": [
+      0.08,
+      0.08,
+      0.95,
+      1.0
+    ]
+  },
+  "Engagement Photos-24.jpg": {
+    "crop": [
+      0.08,
+      0.22,
+      0.94,
+      1.0
+    ],
+    "subject": [
+      0.05,
+      0.08,
+      0.95,
+      1.0
+    ]
+  },
+  "Engagement Photos-25.jpg": {
+    "crop": [
+      0.0,
+      0.14,
+      0.92,
+      1.0
+    ],
+    "subject": [
+      0.0,
+      0.09,
+      0.94,
+      1.0
+    ]
+  }
+}
