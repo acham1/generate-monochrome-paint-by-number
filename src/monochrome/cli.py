@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,16 @@ TONE_DEFAULTS = ToneOptions()
 REGION_DEFAULTS = RegionOptions()
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
+
+
+def _label(source: Path, index: int, mode: str) -> str:
+    """Identify a template on the page without naming the source photo."""
+    if mode == "none":
+        return ""
+    if mode == "name":
+        return source.stem
+    digits = re.findall(r"\d+", source.stem)
+    return digits[-1] if digits else str(index + 1)
 
 
 def _sources(paths: list[Path]) -> list[Path]:
@@ -92,6 +103,13 @@ def pbn(
         TONE_DEFAULTS.mode, "--mode", help="Tone split: kmeans | quantile | uniform."
     ),
     page: str = typer.Option("letter", "--page", help="Page size: letter | a4."),
+    label_from: str = typer.Option(
+        "number",
+        "--label-from",
+        help="What identifies a template on the page: number (trailing digits in "
+        "the filename), name (the full stem), or none. Defaults to number so a "
+        "printed template does not give away the source photo.",
+    ),
     subject: Optional[str] = typer.Option(
         None,
         "--subject",
@@ -165,6 +183,9 @@ def pbn(
         feather=feather,
     )
 
+    if label_from not in {"number", "name", "none"}:
+        raise typer.BadParameter("label-from must be number, name or none")
+
     sources = _sources(paths)
     table: dict[str, dict] = {}
     if framing:
@@ -173,7 +194,7 @@ def pbn(
         if unknown_files:
             typer.echo(f"note: framing entries not among the inputs: {unknown_files}")
 
-    for source in sources:
+    for index, source in enumerate(sources):
         # A manifest entry wins over the single-image flags, so one command can
         # render a whole folder with per-photo framing.
         entry_crop, entry_subject = framing_mod.entry_boxes(table.get(source.name, {}))
@@ -192,6 +213,7 @@ def pbn(
             tone_opts,
             region_opts,
             page=page,
+            label=_label(source, index, label_from),
             crop=source_crop,
             subject=box,
             write_png="png" in wanted,

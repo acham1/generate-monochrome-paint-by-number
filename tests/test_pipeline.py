@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from pathlib import Path
 from PIL import Image
 
+from monochrome import cli
 from monochrome import regions as R
 from monochrome import render, tone
 from monochrome.pipeline import convert
@@ -46,16 +48,39 @@ class TestParseCrop:
 
 
 class TestTone:
-    def test_load_gray_is_unit_range_and_downscaled(self, tmp_path):
-        gray = tone.load_gray(gradient_photo(tmp_path), working_px=100)
-        assert gray.dtype == np.float32
-        assert 0.0 <= gray.min() and gray.max() <= 1.0
-        assert max(gray.shape) == 100
+    def test_load_lightness_is_unit_range_and_downscaled(self, tmp_path):
+        light = tone.load_lightness(gradient_photo(tmp_path), working_px=100)
+        assert light.dtype == np.float32
+        assert 0.0 <= light.min() and light.max() <= 1.0
+        assert max(light.shape) == 100
+
+    def test_lightness_is_perceptual_not_luma(self, tmp_path):
+        """Mid-gray sRGB sits well above L* 0.5; that gap is the whole point."""
+        path = tmp_path / "mid.png"
+        Image.fromarray(np.full((8, 8), 128, dtype=np.uint8)).save(path)
+        light = tone.load_lightness(path, working_px=0)
+        assert 0.5 < light.mean() < 0.56  # sRGB 128 is about L* 53.6
+
+    def test_lightness_to_srgb_round_trips(self):
+        from skimage import color
+
+        values = np.linspace(0.0, 1.0, 11)
+        srgb = tone.lightness_to_srgb(values)
+        assert np.all(np.diff(srgb) > 0), "must stay monotonic"
+        assert srgb[0] == pytest.approx(0.0, abs=1e-6)
+        assert srgb[-1] == pytest.approx(1.0, abs=1e-6)
+        # Mid perceptual gray is much lighter than mid sRGB.
+        assert srgb[5] == pytest.approx(0.4663, abs=0.005)
+        back = color.rgb2lab(np.stack([srgb] * 3, axis=-1).reshape(-1, 1, 3))[:, 0, 0] / 100
+        assert back == pytest.approx(values, abs=1e-4)
+
+    def test_lightness_to_srgb_preserves_shape(self):
+        assert tone.lightness_to_srgb(np.zeros((3, 4))).shape == (3, 4)
 
     def test_crop_selects_the_requested_fraction(self, tmp_path):
         path = gradient_photo(tmp_path, size=(200, 100))
-        full = tone.load_gray(path, working_px=0)
-        half = tone.load_gray(path, working_px=0, crop=(0.5, 0.0, 1.0, 1.0))
+        full = tone.load_lightness(path, working_px=0)
+        half = tone.load_lightness(path, working_px=0, crop=(0.5, 0.0, 1.0, 1.0))
         assert half.shape == (full.shape[0], full.shape[1] // 2)
         # The right half of a left-to-right ramp is the brighter half.
         assert half.mean() > full.mean()
@@ -63,7 +88,7 @@ class TestTone:
     @pytest.mark.parametrize("mode", ["kmeans", "quantile", "uniform"])
     def test_quantize_labels_and_values_are_ordered(self, tmp_path, mode):
         opts = tone.ToneOptions(levels=5, working_px=120, smooth=0, mode=mode)
-        gray = tone.load_gray(gradient_photo(tmp_path), opts.working_px)
+        gray = tone.load_lightness(gradient_photo(tmp_path), opts.working_px)
         level_map, values = tone.quantize(gray, opts)
         assert values.shape == (5,)
         assert np.all(np.diff(values) > 0), "level values must run dark to light"
@@ -71,7 +96,7 @@ class TestTone:
 
     def test_quantize_rejects_too_few_levels(self, tmp_path):
         opts = tone.ToneOptions(levels=1)
-        gray = tone.load_gray(gradient_photo(tmp_path), 100)
+        gray = tone.load_lightness(gradient_photo(tmp_path), 100)
         with pytest.raises(ValueError):
             tone.quantize(gray, opts)
 
@@ -98,7 +123,7 @@ class TestSubjectWeight:
 class TestRegions:
     def build(self, tmp_path, **kw):
         topts = tone.ToneOptions(levels=4, working_px=160, smooth=0)
-        gray = tone.load_gray(gradient_photo(tmp_path), topts.working_px)
+        gray = tone.load_lightness(gradient_photo(tmp_path), topts.working_px)
         level_map, _ = tone.quantize(gray, topts)
         ropts = R.RegionOptions(**kw)
         region_map, region_levels = R.merge_small(level_map, ropts)
@@ -141,6 +166,21 @@ class TestRegions:
                 assert poly[:, 1].min() >= -1 and poly[:, 1].max() <= h
 
 
+class TestLabel:
+    """The page label must not leak the source filename by default."""
+
+    def test_number_mode_takes_trailing_digits(self):
+        assert cli._label(Path("Engagement Photos-16.jpg"), 0, "number") == "16"
+        assert cli._label(Path("DSC_0421.jpg"), 0, "number") == "0421"
+
+    def test_number_mode_falls_back_to_position(self):
+        assert cli._label(Path("portrait.jpg"), 4, "number") == "5"
+
+    def test_name_and_none_modes(self):
+        assert cli._label(Path("portrait.jpg"), 0, "name") == "portrait"
+        assert cli._label(Path("portrait.jpg"), 0, "none") == ""
+
+
 class TestLayout:
     def test_landscape_photo_turns_the_page_landscape(self):
         wide = render.plan_layout((400, 800), "letter")
@@ -176,6 +216,21 @@ class TestConvert:
         svg = next(p for p in result.outputs if p.suffix == ".svg").read_text()
         assert svg.startswith("<svg") and svg.rstrip().endswith("</svg>")
         assert svg.count("<path") >= result.region_count
+
+    def test_page_never_names_the_source_photo(self, tmp_path):
+        """These get printed and handed over; the source is often the surprise."""
+        photo = tmp_path / "Engagement Photos-16.png"
+        photo.write_bytes(gradient_photo(tmp_path).read_bytes())
+        result = convert(
+            photo,
+            tmp_path / "out",
+            tone.ToneOptions(levels=4, working_px=140, smooth=0),
+            R.RegionOptions(min_area=80),
+            label="16",
+        )
+        svg = next(p for p in result.outputs if p.suffix == ".svg").read_text()
+        assert "Engagement" not in svg
+        assert ">16  ·  4 tones" in svg
 
     def test_subject_box_reduces_the_region_count(self, tmp_path):
         photo = gradient_photo(tmp_path)

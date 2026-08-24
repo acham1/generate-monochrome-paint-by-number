@@ -23,6 +23,7 @@ def convert(
     tone_opts: tone.ToneOptions,
     region_opts: regions_mod.RegionOptions,
     page: str = "letter",
+    label: str = "",
     crop=None,
     subject=None,
     write_png: bool = True,
@@ -30,9 +31,10 @@ def convert(
     write_svg: bool = True,
     write_pdf: bool = True,
 ) -> Result:
-    gray = tone.load_gray(source, tone_opts.working_px, crop)
-    prepared = tone.prepare(gray, tone_opts)
+    lightness = tone.load_lightness(source, tone_opts.working_px, crop)
+    prepared = tone.prepare(lightness, tone_opts)
     level_map, level_values = tone.quantize(prepared, tone_opts)
+    display_grays = tone.lightness_to_srgb(level_values)
 
     weight = regions_mod.subject_weight(
         level_map.shape, subject, region_opts.background_boost, region_opts.feather
@@ -42,12 +44,15 @@ def convert(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = source.stem
-    title = f"{stem}  ·  {tone_opts.levels} tones  ·  {len(found)} regions"
+    # The filename stays off the page: these get printed and handed to someone,
+    # and the source photo is often the surprise.
+    parts = [label, f"{tone_opts.levels} tones", f"{len(found)} regions"]
+    title = "  ·  ".join(part for part in parts if part)
     outputs: list[Path] = []
 
     if write_png:
         path = out_dir / f"{stem}-mono.png"
-        render.write_mono_png(region_map, region_levels, level_values, path)
+        render.write_mono_png(region_map, region_levels, display_grays, path)
         outputs.append(path)
     if write_lines:
         path = out_dir / f"{stem}-lines.png"
@@ -55,11 +60,11 @@ def convert(
         outputs.append(path)
     if write_svg:
         path = out_dir / f"{stem}-pbn.svg"
-        render.write_svg(found, region_levels, level_values, region_map.shape, title, path, page)
+        render.write_svg(found, display_grays, level_values, region_map.shape, title, path, page)
         outputs.append(path)
     if write_pdf:
         path = out_dir / f"{stem}-pbn.pdf"
-        render.write_pdf(found, region_levels, level_values, region_map.shape, title, path, page)
+        render.write_pdf(found, display_grays, level_values, region_map.shape, title, path, page)
         outputs.append(path)
 
     return Result(source=source, outputs=outputs, region_count=len(found), levels=tone_opts.levels)

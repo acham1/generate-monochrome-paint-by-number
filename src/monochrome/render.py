@@ -75,9 +75,9 @@ def numeral_size(region: Region, scale: float, text: str) -> float:
     return max(min(size, width_limited), MIN_NUMERAL)
 
 
-def write_mono_png(region_map: np.ndarray, region_levels, level_values, path) -> None:
+def write_mono_png(region_map: np.ndarray, region_levels, display_grays, path) -> None:
     """Save the flat monochrome rendering the template is derived from."""
-    grays = (np.asarray(level_values)[np.asarray(region_levels)] * 255).astype(np.uint8)
+    grays = (np.asarray(display_grays)[np.asarray(region_levels)] * 255).astype(np.uint8)
     Image.fromarray(grays[region_map]).save(path)
 
 
@@ -127,12 +127,20 @@ def write_lines_png(regions, img_shape, path, supersample: int = 3) -> None:
     canvas.resize((w, h), Image.LANCZOS).save(path)
 
 
-def _key_entries(level_values) -> list[tuple[str, float]]:
-    """Numeral and gray value for each tone, darkest tone numbered 1."""
-    return [(str(i + 1), float(v)) for i, v in enumerate(level_values)]
+def _key_entries(display_grays, lightness) -> list[tuple[str, float, int]]:
+    """Numeral, swatch colour and perceptual lightness for each tone.
+
+    The swatch is drawn in sRGB so it looks right, but the percentage quoted
+    beside it is L*: how light the tone is to the eye, which is the number a
+    painter can actually match against.
+    """
+    return [
+        (str(i + 1), float(gray), round(float(light) * 100))
+        for i, (gray, light) in enumerate(zip(display_grays, lightness))
+    ]
 
 
-def write_svg(regions, region_levels, level_values, img_shape, title, path, page="letter") -> None:
+def write_svg(regions, display_grays, lightness, img_shape, title, path, page="letter") -> None:
     lay = plan_layout(img_shape, page)
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{lay.page_w:.1f}" '
@@ -164,7 +172,7 @@ def write_svg(regions, region_levels, level_values, img_shape, title, path, page
     parts.append("</g>")
 
     key_y = lay.key_y
-    for i, (text, gray) in enumerate(_key_entries(level_values)):
+    for i, (text, gray, pct) in enumerate(_key_entries(display_grays, lightness)):
         sx = MARGIN + i * (SWATCH + SWATCH_GAP + 22)
         hexv = "#%02x%02x%02x" % ((round(gray * 255),) * 3)
         fg = "#ffffff" if gray < 0.5 else "#000000"
@@ -174,14 +182,14 @@ def write_svg(regions, region_levels, level_values, img_shape, title, path, page
             f'<text x="{sx + SWATCH / 2:.1f}" y="{key_y + SWATCH / 2 + 3.4:.1f}" '
             f'font-family="{FONT}" font-size="9.5" fill="{fg}" text-anchor="middle">{text}</text>'
             f'<text x="{sx + SWATCH + 4:.1f}" y="{key_y + SWATCH / 2 + 3.2:.1f}" '
-            f'font-family="{FONT}" font-size="7.5" fill="#333">{round(gray * 100)}%</text>'
+            f'font-family="{FONT}" font-size="7.5" fill="#333">{pct}%</text>'
         )
     parts.append("</svg>")
     with open(path, "w") as fh:
         fh.write("\n".join(parts))
 
 
-def write_pdf(regions, region_levels, level_values, img_shape, title, path, page="letter") -> None:
+def write_pdf(regions, display_grays, lightness, img_shape, title, path, page="letter") -> None:
     lay = plan_layout(img_shape, page)
     c = pdfcanvas.Canvas(str(path), pagesize=(lay.page_w, lay.page_h))
     c.setTitle(title)
@@ -224,7 +232,7 @@ def write_pdf(regions, region_levels, level_values, img_shape, title, path, page
         c.drawCentredString(x, y - size * 0.36, text)
 
     key_top = lay.page_h - lay.key_y
-    for i, (text, gray) in enumerate(_key_entries(level_values)):
+    for i, (text, gray, pct) in enumerate(_key_entries(display_grays, lightness)):
         sx = MARGIN + i * (SWATCH + SWATCH_GAP + 22)
         c.setFillGray(gray)
         c.rect(sx, key_top - SWATCH, SWATCH, SWATCH, stroke=1, fill=1)
@@ -233,7 +241,7 @@ def write_pdf(regions, region_levels, level_values, img_shape, title, path, page
         c.drawCentredString(sx + SWATCH / 2, key_top - SWATCH / 2 - 3.4, text)
         c.setFillGray(0.2)
         c.setFont(FONT, 7.5)
-        c.drawString(sx + SWATCH + 4, key_top - SWATCH / 2 - 3.2, f"{round(gray * 100)}%")
+        c.drawString(sx + SWATCH + 4, key_top - SWATCH / 2 - 3.2, f"{pct}%")
 
     c.showPage()
     c.save()

@@ -31,6 +31,11 @@ Each source image produces four files:
 
 Pick with `--formats` (default `png,lines,svg,pdf`).
 
+The printed page carries only a short identifier — by default the trailing
+digits of the filename — never the filename itself, so a template can be handed
+to someone without giving away which photo it came from. Change that with
+`--label-from name|number|none`.
+
 ## Checking the framing
 
 A crop that slices through part of the subject yields a plausible-looking
@@ -58,9 +63,13 @@ labelled with its region count.
 
 ## How it works
 
-1. **Tone** (`tone.py`) — grayscale, edge-preserving denoise, then quantize to
-   `--levels` flat grays. Level boundaries come from 1-D k-means on the
-   histogram, so tones follow the photograph instead of an even ramp.
+1. **Tone** (`tone.py`) — convert to CIE **L\*** lightness, denoise while
+   preserving edges, then quantize to `--levels` flat tones. Level boundaries
+   come from 1-D k-means on a 256-bin histogram, so tones follow the photograph
+   instead of an even ramp, and the whole pipeline reasons in L\* so that equal
+   numeric steps are equal *visual* steps. Plain luma is gamma-encoded and would
+   put the boundaries in the wrong places. Swatches are converted back to sRGB
+   for display; the percentage printed beside each is L\*.
 2. **Regions** (`regions.py`) — median filter kills specks, a majority filter
    rounds off ragged filigree, then undersized components are absorbed into the
    neighbour closest in tone. What survives is traced to polygons and given the
@@ -79,7 +88,9 @@ The knobs that matter most, in rough order of effect:
   single biggest lever on a photo with a cluttered background.
 - `--min-region` — the floor on region size, in working pixels.
 - `--working-px` — the resolution regions are computed at. Lower is chunkier.
-- `--levels` — how many grays to mix. More levels means more regions.
+- `--levels` — how many tones to mix. More levels means more regions. This is
+  bounded by what a person can realistically mix and keep track of, not by what
+  the histogram wants; six is about the ceiling.
 - `--crop left,top,right,bottom` — cut the frame down before anything else.
 - `--no-crop` — ignore every crop, manifest ones included, and render full
   frames. Subject boxes still apply, so this isolates what the cropping is

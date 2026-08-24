@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image, ImageOps
-from skimage import exposure, restoration
+from skimage import color, exposure, restoration
 
 
 @dataclass(frozen=True)
@@ -44,10 +44,16 @@ def parse_crop(spec: str | None) -> tuple[float, float, float, float] | None:
     return left, top, right, bottom
 
 
-def load_gray(path, working_px: int, crop=None) -> np.ndarray:
-    """Load an image as a float32 grayscale array in [0, 1], cropped and downscaled."""
+def load_lightness(path, working_px: int, crop=None) -> np.ndarray:
+    """Load an image as CIE L* lightness in [0, 1], cropped and downscaled.
+
+    Quantizing plain luma would put the tone boundaries in the wrong places: it
+    is gamma-encoded, so equal numeric steps are not equal *visual* steps, and a
+    painter mixing six evenly-spaced grays is working in perceptual terms. L* is
+    built for exactly that, so every stage downstream operates in it.
+    """
     with Image.open(path) as im:
-        im = ImageOps.exif_transpose(im).convert("L")
+        im = ImageOps.exif_transpose(im).convert("RGB")
         if crop:
             left, top, right, bottom = crop
             im = im.crop(
@@ -63,11 +69,28 @@ def load_gray(path, working_px: int, crop=None) -> np.ndarray:
             scale = working_px / long_edge
             size = (max(1, round(im.width * scale)), max(1, round(im.height * scale)))
             im = im.resize(size, Image.LANCZOS)
-        return np.asarray(im, dtype=np.float32) / 255.0
+        rgb = np.asarray(im, dtype=np.float64) / 255.0
+    return (color.rgb2lab(rgb)[..., 0] / 100.0).astype(np.float32)
+
+
+def lightness_to_srgb(lightness) -> np.ndarray:
+    """CIE L* in [0, 1] back to an sRGB gray in [0, 1], for display and print.
+
+    The pipeline reasons in L* but screens and printers want sRGB, so the two
+    are kept apart: L* decides where tones fall, this decides how they look.
+    """
+    values = np.asarray(lightness, dtype=np.float64)
+    flat = values.reshape(-1)
+    lab = np.stack([flat * 100.0, np.zeros_like(flat), np.zeros_like(flat)], axis=-1)
+    rgb = color.lab2rgb(lab.reshape(-1, 1, 3))
+    return np.clip(rgb[:, 0, 0], 0.0, 1.0).reshape(values.shape).astype(np.float32)
 
 
 def prepare(gray: np.ndarray, opts: ToneOptions) -> np.ndarray:
-    """Apply local contrast and edge-preserving smoothing before quantizing."""
+    """Apply local contrast and edge-preserving smoothing before quantizing.
+
+    Operates on L*, so the denoise radius is in perceptual units too.
+    """
     out = gray
     if opts.contrast > 0:
         out = exposure.equalize_adapthist(out, clip_limit=opts.contrast)
