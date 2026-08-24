@@ -14,13 +14,13 @@ uv sync
 
 ```sh
 # one photo
-uv run monochrome pbn "photos/Engagement Photos-09.jpg" -o out
+uv run monochrome pbn photos/portrait.jpg -o out
 
-# a whole folder, with per-photo subject framing
-uv run monochrome pbn photos/ -o out --subjects subjects.json
+# a whole folder, with per-photo framing
+uv run monochrome pbn photos/ -o out --framing framing.json
 ```
 
-Each source image produces three files:
+Each source image produces four files:
 
 | file | what it is |
 | --- | --- |
@@ -33,8 +33,8 @@ Pick with `--formats` (default `png,lines,svg,pdf`).
 
 ## Checking the framing
 
-A crop that slices through one of two people yields a plausible-looking template
-of the wrong picture, so verify framing before generating:
+A crop that slices through part of the subject yields a plausible-looking
+template of the wrong picture, so verify framing before generating:
 
 ```sh
 uv run monochrome check photos/ --framing framing.json -o framing-check.jpg
@@ -46,10 +46,11 @@ covers more than 90% of the frame, which means it is suppressing nothing.
 
 ## Reviewing a batch
 
-Opening sixteen PDFs to see whether a setting helped is tedious, so tile them:
+Opening a folder of PDFs to see whether a setting helped is tedious, so tile
+them:
 
 ```sh
-uv run monochrome sheet out --kind all --strip-prefix "Engagement Photos-"
+uv run monochrome sheet out --kind all --strip-prefix "DSC_"
 ```
 
 That writes `proof-lines.jpg` and `proof-mono.jpg` into the directory, each tile
@@ -71,7 +72,7 @@ labelled with its region count.
 
 The knobs that matter most, in rough order of effect:
 
-- `--subject left,top,right,bottom` — where the people are, as fractions of the
+- `--subject left,top,right,bottom` — where the subject is, as fractions of the
   frame. Detail is preserved inside; outside, regions must be
   `--background-boost` times larger to survive, so a busy background collapses
   into a few flat shapes instead of hundreds of confetti pieces. This is the
@@ -94,8 +95,8 @@ Per-photo crop and subject boxes, so a whole folder renders in one command:
 
 ```json
 {
-  "Engagement Photos-19.jpg": { "subject": [0.08, 0.22, 0.92, 1.0] },
-  "Engagement Photos-16.jpg": {
+  "portrait.jpg": { "subject": [0.08, 0.22, 0.92, 1.0] },
+  "wide-shot.jpg": {
     "crop":    [0.22, 0.24, 0.96, 1.0],
     "subject": [0.11, 0.11, 0.89, 1.0]
   }
@@ -111,19 +112,20 @@ that already fill it.
 happens first, so measure the subject box against the cropped frame rather than
 the original.
 
-## Notes on this photo set
+## Notes from practice
 
-The engagement photos are shot in redwood forest, so a whole frame of foliage
-will happily generate a thousand unpaintable regions. What worked:
+Photos with cluttered natural backgrounds — foliage, undergrowth, dappled light
+— are the hard case. A frame of leaf texture will happily generate a thousand
+unpaintable regions, and most of the tuning here exists to deal with that.
 
-- Photos where the couple is a distant speck were dropped rather than tuned;
-  no setting rescues a picture that is mostly forest.
-- Wide frames were cropped onto the couple, then given a subject box. Cropping
-  alone raises the region count, because it removes the very background the box
-  was suppressing.
-- 50–120 regions per template is a comfortable range. Under 60 reads as
+- **Curate before tuning.** No setting rescues a picture that is mostly
+  background; if the subject is a distant speck, drop the photo instead.
+- **A crop and a subject box work together, not in isolation.** Cropping alone
+  tends to *raise* the region count, because it removes the very background the
+  box was suppressing. Expect to set both.
+- **50–120 regions per template is a comfortable range.** Under 60 reads as
   graphic and flat; over 200 is a chore to paint.
 - **Measure the framing, do not eyeball it.** Boxes estimated from thumbnails
-  were wrong on half the set: one crop cut a person out of the frame entirely,
-  and several boxes were so generous they suppressed nothing. `monochrome check`
-  exists because of this.
+  were wrong on half of a 16-photo set: one crop cut a subject out of the frame
+  entirely, and several boxes were so generous they suppressed nothing.
+  `monochrome check` exists because of this.
