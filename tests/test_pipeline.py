@@ -94,6 +94,21 @@ class TestTone:
         assert np.all(np.diff(values) > 0), "level values must run dark to light"
         assert level_map.min() >= 0 and level_map.max() <= 4
 
+    def test_ramp_palette_spans_black_to_white_inclusive(self):
+        fitted = np.array([0.05, 0.23, 0.39, 0.55, 0.70, 0.87], dtype=np.float32)
+        ramp = tone.paint_palette(fitted, "ramp")
+        assert ramp[0] == pytest.approx(0.0)
+        assert ramp[-1] == pytest.approx(1.0)
+        assert np.diff(ramp) == pytest.approx(np.full(5, 0.2))
+
+    def test_fitted_palette_is_a_passthrough(self):
+        fitted = np.array([0.05, 0.5, 0.9], dtype=np.float32)
+        assert tone.paint_palette(fitted, "fitted") is fitted
+
+    def test_unknown_palette_is_rejected(self):
+        with pytest.raises(ValueError):
+            tone.paint_palette(np.zeros(3), "rainbow")
+
     def test_quantize_rejects_too_few_levels(self, tmp_path):
         opts = tone.ToneOptions(levels=1)
         gray = tone.load_lightness(gradient_photo(tmp_path), 100)

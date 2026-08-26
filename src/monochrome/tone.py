@@ -29,6 +29,10 @@ class ToneOptions:
     Raise it (0.003-0.01) only for flat, low-contrast originals."""
     mode: str = "kmeans"
     """How level boundaries are chosen: kmeans | quantile | uniform."""
+    palette: str = "fitted"
+    """What each tone is actually painted: fitted (the value it was fitted to)
+    or ramp (even steps from black to white). Independent of `mode`, which only
+    decides which pixels land in which tone."""
 
 
 def parse_crop(spec: str | None) -> tuple[float, float, float, float] | None:
@@ -71,6 +75,22 @@ def load_lightness(path, working_px: int, crop=None) -> np.ndarray:
             im = im.resize(size, Image.LANCZOS)
         rgb = np.asarray(im, dtype=np.float64) / 255.0
     return (color.rgb2lab(rgb)[..., 0] / 100.0).astype(np.float32)
+
+
+def paint_palette(level_values: np.ndarray, palette: str) -> np.ndarray:
+    """The lightness each tone is painted at, which need not be what it was fitted to.
+
+    Separating this from quantization lets the segmentation follow the
+    photograph - k-means puts boundaries where the histogram has mass, so every
+    tone covers a useful share of the picture - while the tones themselves are
+    spread evenly from black to white. The regions do not move; only the grays
+    poured into them change.
+    """
+    if palette == "fitted":
+        return level_values
+    if palette == "ramp":
+        return np.linspace(0.0, 1.0, len(level_values)).astype(np.float32)
+    raise ValueError(f"unknown palette: {palette!r}")
 
 
 def lightness_to_srgb(lightness) -> np.ndarray:

@@ -100,7 +100,16 @@ def pbn(
         help="Local contrast (CLAHE) clip limit. 0 = off; try 0.003 if flat.",
     ),
     mode: str = typer.Option(
-        TONE_DEFAULTS.mode, "--mode", help="Tone split: kmeans | quantile | uniform."
+        TONE_DEFAULTS.mode,
+        "--mode",
+        help="Tone split: kmeans | quantile | uniform.",
+    ),
+    palette: str = typer.Option(
+        "fitted",
+        "--palette",
+        help="What the tones are painted: fitted (the tone each region was "
+        "measured at) or ramp (even steps black to white). Unlike --mode this "
+        "does not move any region; it only changes the grays poured into them.",
     ),
     page: str = typer.Option("letter", "--page", help="Page size: letter | a4."),
     label_from: str = typer.Option(
@@ -171,8 +180,16 @@ def pbn(
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
+    if palette not in {"fitted", "ramp"}:
+        raise typer.BadParameter("palette must be fitted or ramp")
+
     tone_opts = ToneOptions(
-        levels=levels, working_px=working_px, smooth=smooth, contrast=contrast, mode=mode
+        levels=levels,
+        working_px=working_px,
+        smooth=smooth,
+        contrast=contrast,
+        mode=mode,
+        palette=palette,
     )
     region_opts = RegionOptions(
         min_area=min_region,

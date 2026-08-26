@@ -70,6 +70,12 @@ labelled with its region count.
    numeric steps are equal *visual* steps. Plain luma is gamma-encoded and would
    put the boundaries in the wrong places. Swatches are converted back to sRGB
    for display; the percentage printed beside each is L\*.
+
+   Where the tones *fall* (`--mode`) and what they are *painted* (`--palette`)
+   are separate decisions. Fitting boundaries to the histogram but painting an
+   even black-to-white ramp gives maximum contrast without starving any tone,
+   whereas spacing the boundaries evenly as well leaves the lightest tone
+   covering almost nothing, since little in a photograph reaches L\* 90.
 2. **Regions** (`regions.py`) — median filter kills specks, a majority filter
    rounds off ragged filigree, then undersized components are absorbed into the
    neighbour closest in tone. What survives is traced to polygons and given the
@@ -88,6 +94,12 @@ The knobs that matter most, in rough order of effect:
   single biggest lever on a photo with a cluttered background.
 - `--min-region` — the floor on region size, in working pixels.
 - `--working-px` — the resolution regions are computed at. Lower is chunkier.
+- `--palette fitted|ramp` — what the tones are *painted*, as opposed to where
+  they fall. `fitted` uses the value each tone was measured at; `ramp` spreads
+  them evenly from black to white. This moves no region and changes no outline,
+  only the grays poured into them, so it is a contrast decision rather than a
+  segmentation one. Pairing `ramp` with the default k-means `--mode` gives the
+  full tonal range while every tone still covers a useful share of the picture.
 - `--levels` — how many tones to mix. More levels means more regions. This is
   bounded by what a person can realistically mix and keep track of, not by what
   the histogram wants; six is about the ceiling.
