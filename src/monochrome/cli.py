@@ -134,6 +134,17 @@ def pbn(
         help="Nozzle width in mm. Sets the sampling pitch at one column per bead, "
         "so detail tracks the printed size automatically.",
     ),
+    stl_seam: float = typer.Option(
+        MESH_DEFAULTS.seam_mm,
+        "--stl-seam",
+        help="Width in mm of a raised seam tracing every region boundary. Sharpens "
+        "the edges without flattening the tonal steps. 0 leaves them bare.",
+    ),
+    stl_seam_rise: float = typer.Option(
+        MESH_DEFAULTS.seam_rise_mm,
+        "--stl-seam-rise",
+        help="How far the seam stands above the higher plateau it divides.",
+    ),
     stl_border: float = typer.Option(
         MESH_DEFAULTS.border_mm,
         "--stl-border",
@@ -231,6 +242,8 @@ def pbn(
         base_mm=stl_base,
         nozzle_mm=stl_nozzle,
         invert=stl_invert,
+        seam_mm=stl_seam,
+        seam_rise_mm=stl_seam_rise,
         border_mm=stl_border,
         border_rise_mm=stl_border_rise,
         border_gap_mm=stl_border_gap,

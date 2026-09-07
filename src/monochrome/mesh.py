@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy import ndimage
 
 STL_RECORD = np.dtype([("normal", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")])
 
@@ -41,6 +42,20 @@ class MeshOptions:
     rather than set independently."""
     invert: bool = False
     """Raise the dark tones instead. For a backlit piece, where thick reads dark."""
+    seam_mm: float = 0.0
+    """Width of a raised seam tracing every region boundary. 0 leaves them bare.
+
+    A seam sharpens each boundary without flattening the tonal steps, because
+    the plateaus keep their heights and the seam merely rides over them. Walls
+    raised to a single height would sharpen the boundaries too, but they discard
+    what the geometry encodes for free: the step between two regions is
+    proportional to their difference in tone."""
+    seam_rise_mm: float = 1.5
+    """How far the seam stands above the higher of the two plateaus it divides.
+
+    Kept small on purpose. A seam this size is a lip buttressed by the plateau
+    behind it, where a full-height wall between two dark regions is a
+    free-standing fin and prints badly."""
     border_mm: float = 0.0
     """Width of a raised frame around the picture. 0 leaves the edge bare."""
     border_rise_mm: float = 2.0
@@ -75,6 +90,9 @@ def height_field(region_map, region_levels, paint_values, opts: MeshOptions) -> 
         brightness = 1.0 - brightness
     heights = opts.base_mm + opts.relief_mm * brightness
 
+    if opts.seam_mm > 0:
+        _raise_seams(heights, sampled, pitch_mm(heights.shape, opts), opts)
+
     if opts.border_mm > 0:
         pixel_mm = pitch_mm(heights.shape, opts)
         gap = max(round(opts.border_gap_mm / pixel_mm), 0)
@@ -85,6 +103,40 @@ def height_field(region_map, region_levels, paint_values, opts: MeshOptions) -> 
             _set_border(heights, frame + gap, opts.base_mm)
         _set_border(heights, frame, opts.base_mm + opts.relief_mm + opts.border_rise_mm)
     return heights
+
+
+def _boundary_mask(ids: np.ndarray, width_px: int) -> np.ndarray:
+    """Pixels within `width_px` of a change in region id.
+
+    Comparing each way and keeping both sides already gives a two pixel band,
+    so only wider seams need dilating.
+    """
+    mask = np.zeros(ids.shape, dtype=bool)
+    differs = ids[:, :-1] != ids[:, 1:]
+    mask[:, :-1] |= differs
+    mask[:, 1:] |= differs
+    differs = ids[:-1, :] != ids[1:, :]
+    mask[:-1, :] |= differs
+    mask[1:, :] |= differs
+    extra = (width_px - 2) // 2
+    if extra > 0:
+        mask = ndimage.binary_dilation(mask, iterations=extra)
+    return mask
+
+
+def _raise_seams(heights: np.ndarray, ids: np.ndarray, pixel_mm: float, opts: MeshOptions) -> None:
+    """Lift a seam over every region boundary, in place.
+
+    The seam follows the terrain rather than sitting at one height: each pixel
+    rises above the tallest plateau it touches, so the tonal steps underneath
+    survive and the seam stays a shallow lip wherever it goes.
+    """
+    width_px = max(round(opts.seam_mm / pixel_mm), 1)
+    mask = _boundary_mask(ids, width_px)
+    if not mask.any():
+        return
+    local_max = ndimage.grey_dilation(heights, size=2 * width_px + 1)
+    heights[mask] = local_max[mask] + opts.seam_rise_mm
 
 
 def _set_border(heights: np.ndarray, band: int, value: float) -> None:

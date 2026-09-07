@@ -410,3 +410,56 @@ class TestWallRatio:
         info = mesh.write_relief_stl(region_map, [0], [0.0], opts, tmp_path / "r.stl")
         assert "wall_ratio" not in info
         assert "step_mm" in info
+
+
+class TestSeam:
+    """A seam sharpens boundaries without flattening the tonal steps."""
+
+    def _setup(self, **kw):
+        # four 20x20 blocks of different tone, so there are interior boundaries
+        region_map = np.zeros((40, 40), dtype=np.int32)
+        region_map[:20, 20:] = 1
+        region_map[20:, :20] = 2
+        region_map[20:, 20:] = 3
+        opts = mesh.MeshOptions(max_mm=40.0, nozzle_mm=1.0, base_mm=2.0, relief_mm=6.0, **kw)
+        heights = mesh.height_field(region_map, [0, 1, 2, 3], [0.0, 0.33, 0.66, 1.0], opts)
+        return heights, opts
+
+    def test_off_by_default(self):
+        plain, _ = self._setup()
+        assert plain.max() == pytest.approx(8.0), "the lightest plateau, no seam above it"
+
+    def test_seam_rises_above_the_higher_neighbour(self):
+        _, opts = self._setup()
+        seamed, _ = self._setup(seam_mm=1.0, seam_rise_mm=1.5)
+        assert seamed.max() == pytest.approx(8.0 + 1.5)
+
+    def test_plateaus_keep_their_heights(self):
+        """The point of a seam over walls: tonal steps survive underneath."""
+        plain, _ = self._setup()
+        seamed, _ = self._setup(seam_mm=1.0, seam_rise_mm=1.5)
+        middles = [(10, 10), (10, 30), (30, 10), (30, 30)]
+        for row, col in middles:
+            assert seamed[row, col] == pytest.approx(plain[row, col])
+        assert len(np.unique(np.round(seamed, 4))) > len(np.unique(np.round(plain, 4)))
+
+    def test_seam_follows_the_terrain_rather_than_one_height(self):
+        """Each stretch of seam sits above its own neighbours, not globally."""
+        seamed, _ = self._setup(seam_mm=1.0, seam_rise_mm=1.0)
+        # boundary between the two darkest blocks vs between the two lightest
+        dark_seam = seamed[19, 10]
+        light_seam = seamed[19, 30]
+        assert dark_seam < light_seam
+
+    def test_wider_seam_covers_more(self):
+        narrow, _ = self._setup(seam_mm=1.0, seam_rise_mm=1.0)
+        wide, _ = self._setup(seam_mm=5.0, seam_rise_mm=1.0)
+        raised_narrow = (narrow > 8.0).sum() + (narrow == 8.0).sum()
+        assert (wide > narrow).any()
+        assert (wide != narrow).sum() > 0
+
+    def test_seamed_surface_is_still_closed(self):
+        heights, opts = self._setup(seam_mm=1.0, seam_rise_mm=1.5, border_mm=3.0)
+        counts = TestMesh._edge_counts(mesh.build(heights, mesh.pitch_mm(heights.shape, opts)))
+        assert min(counts.values()) >= 2
+        assert not [e for e, n in counts.items() if n % 2]

@@ -114,9 +114,34 @@ suits a relief better than the fitted spacing.
 | `--stl-base` | solid slab under the darkest tone |
 | `--stl-nozzle` | nozzle width; sets the sampling pitch at one column per bead |
 | `--stl-invert` | raise the dark tones instead, for a backlit piece |
+| `--stl-seam` | width of a raised seam tracing every region boundary; 0 for none |
+| `--stl-seam-rise` | how far the seam stands above the higher plateau it divides |
 | `--stl-border` | width of a raised frame in mm; 0 leaves the edge bare |
 | `--stl-border-rise` | how far the frame stands above the lightest tone |
 | `--stl-border-gap` | recessed gutter between frame and picture |
+
+`--stl-seam` sharpens the boundaries. It is worth understanding why it is a
+seam rather than a wall, because tracing every boundary with a wall at one
+height is the obvious version and it is worse.
+
+The geometry already encodes something for free: the step between two regions is
+proportional to their difference in tone, so a jump from the darkest tone to the
+lightest makes a cliff and casts a deep shadow, while one tone to the next makes
+a lip. Raising every boundary to the same height discards all of that -- it
+gives the highest contrast of anything measured here, but the interiors darken
+and the piece reads as bright contour lines on dark ground rather than as a
+tonal picture.
+
+A seam instead rides *over* the terrain, standing `--stl-seam-rise` above
+whichever plateau it touches is higher. The plateaus keep their heights, so the
+tonal steps survive underneath and each boundary gains a crisp highlight along
+its top. It also prints far better: a shallow lip is buttressed by the plateau
+behind it, around 2:1, where a full-height wall running between two dark regions
+is a free-standing fin at 9:1.
+
+`--stl-seam 0.8 --stl-seam-rise 1.5` covers about 16% of the surface. Be aware
+the occlusion model probably understates the effect, since a real ridge catches
+a specular highlight along its edge that sky-visibility does not measure.
 
 A frame earns its place for two reasons that have nothing to do with taste.
 Without one, the outer band of the picture is anomalously bright: interior
