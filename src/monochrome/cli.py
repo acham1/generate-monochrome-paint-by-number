@@ -14,6 +14,7 @@ from .regions import RegionOptions
 from . import framing as framing_mod
 from . import sheet as sheet_mod
 from .render import PAGE_SIZES
+from .mesh import MeshOptions
 from .tone import ToneOptions, parse_crop
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -22,6 +23,7 @@ app = typer.Typer(add_completion=False, help=__doc__)
 # cannot drift apart.
 TONE_DEFAULTS = ToneOptions()
 REGION_DEFAULTS = RegionOptions()
+MESH_DEFAULTS = MeshOptions()
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -111,6 +113,26 @@ def pbn(
         "measured at) or ramp (even steps black to white). Unlike --mode this "
         "does not move any region; it only changes the grays poured into them.",
     ),
+    stl_width: float = typer.Option(
+        MESH_DEFAULTS.width_mm, "--stl-width", help="Width of the printed relief, in mm."
+    ),
+    stl_relief: float = typer.Option(
+        MESH_DEFAULTS.relief_mm,
+        "--stl-relief",
+        help="Millimetres climbed from the darkest tone to the lightest.",
+    ),
+    stl_base: float = typer.Option(
+        MESH_DEFAULTS.base_mm, "--stl-base", help="Solid slab under the darkest tone, in mm."
+    ),
+    stl_px: int = typer.Option(
+        MESH_DEFAULTS.px,
+        "--stl-px",
+        min=16,
+        help="Longest edge of the relief grid. Higher is finer and much heavier.",
+    ),
+    stl_invert: bool = typer.Option(
+        False, "--stl-invert", help="Raise the dark tones instead, for a backlit piece."
+    ),
     page: str = typer.Option("letter", "--page", help="Page size: letter | a4."),
     label_from: str = typer.Option(
         "number",
@@ -161,7 +183,8 @@ def pbn(
         "png,lines,svg,pdf",
         "--formats",
         help="Comma-separated outputs: png (flat monochrome), lines (rasterized "
-        "outlines for on-screen review), svg, pdf.",
+        "outlines for on-screen review), svg, pdf, stl (a 3-D relief where "
+        "brightness becomes height).",
     ),
 ) -> None:
     """Convert photos to monochrome and emit printable paint-by-numbers templates."""
@@ -170,7 +193,7 @@ def pbn(
     if mode not in {"kmeans", "quantile", "uniform"}:
         raise typer.BadParameter("mode must be kmeans, quantile or uniform")
     wanted = {f.strip().lower() for f in formats.split(",") if f.strip()}
-    unknown = wanted - {"png", "lines", "svg", "pdf"}
+    unknown = wanted - {"png", "lines", "svg", "pdf", "stl"}
     if unknown:
         raise typer.BadParameter(f"unknown formats: {sorted(unknown)}")
 
@@ -182,6 +205,14 @@ def pbn(
 
     if palette not in {"fitted", "ramp"}:
         raise typer.BadParameter("palette must be fitted or ramp")
+
+    mesh_opts = MeshOptions(
+        width_mm=stl_width,
+        relief_mm=stl_relief,
+        base_mm=stl_base,
+        px=stl_px,
+        invert=stl_invert,
+    )
 
     tone_opts = ToneOptions(
         levels=levels,
@@ -237,10 +268,18 @@ def pbn(
             write_lines="lines" in wanted,
             write_svg="svg" in wanted,
             write_pdf="pdf" in wanted,
+            write_stl="stl" in wanted,
+            mesh_opts=mesh_opts,
         )
         typer.echo(f"{result.region_count} regions")
         for output in result.outputs:
             typer.echo(f"    {output}")
+        if result.mesh_info:
+            info = result.mesh_info
+            typer.echo(
+                f"    relief {info['width_mm']:.0f} x {info['depth_mm']:.0f} x "
+                f"{info['height_mm']:.1f} mm, {info['triangles']:,} triangles"
+            )
 
 
 @app.command()

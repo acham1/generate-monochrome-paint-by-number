@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from monochrome import cli
+from monochrome import mesh
 from monochrome import regions as R
 from monochrome import render, tone
 from monochrome.pipeline import convert
@@ -259,3 +260,76 @@ class TestConvert:
             subject=(0.25, 0.25, 0.5, 0.5),
         )
         assert focused.region_count <= uniform.region_count
+
+
+class TestMesh:
+    """The relief has to be a closed solid, or a slicer cannot print it."""
+
+    @staticmethod
+    def _edge_counts(triangles):
+        from collections import Counter
+
+        edges = Counter()
+        for tri in np.round(np.asarray(triangles, dtype=np.float64), 6):
+            for i in range(3):
+                a, b = tuple(tri[i]), tuple(tri[(i + 1) % 3])
+                edges[(a, b) if a < b else (b, a)] += 1
+        return edges
+
+    @staticmethod
+    def _volume(triangles):
+        """Signed volume by the divergence theorem; positive means outward."""
+        v = np.asarray(triangles, dtype=np.float64)
+        return np.einsum("ij,ij->i", v[:, 0], np.cross(v[:, 1], v[:, 2])).sum() / 6.0
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            [[1.0]],
+            [[1.0, 2.0], [3.0, 4.0]],
+            [[5.0, 5.0, 5.0], [5.0, 1.0, 5.0], [5.0, 5.0, 5.0]],
+            [[1.0, 1.0, 1.0], [1.0, 9.0, 1.0], [1.0, 1.0, 1.0]],
+        ],
+    )
+    def test_surface_has_no_holes(self, field):
+        """Every edge shared by at least two faces means nothing is left open."""
+        counts = self._edge_counts(mesh.build(np.array(field), 1.0))
+        assert min(counts.values()) >= 2
+        assert not [e for e, n in counts.items() if n % 2], "edges must pair up"
+
+    @pytest.mark.parametrize("pixel_mm", [0.5, 1.0, 2.5])
+    def test_volume_matches_the_columns_it_is_made_of(self, pixel_mm):
+        field = np.array([[1.0, 2.0, 3.0], [4.0, 1.0, 2.0], [2.0, 3.0, 1.0]])
+        volume = self._volume(mesh.build(field, pixel_mm))
+        assert volume == pytest.approx(field.sum() * pixel_mm**2, rel=1e-6)
+
+    def test_walls_are_split_so_corners_meet(self):
+        """A staircase leaves open edges unless walls share a ladder of heights."""
+        counts = self._edge_counts(mesh.build(np.array([[1.0, 2.0], [3.0, 4.0]]), 1.0))
+        assert 1 not in counts.values()
+
+    def test_height_field_spans_base_to_base_plus_relief(self):
+        region_map = np.array([[0, 1], [2, 2]], dtype=np.int32)
+        opts = mesh.MeshOptions(base_mm=2.0, relief_mm=6.0, px=64)
+        heights = mesh.height_field(region_map, [0, 1, 2], [0.0, 0.5, 1.0], opts)
+        assert heights.min() == pytest.approx(2.0)
+        assert heights.max() == pytest.approx(8.0)
+
+    def test_invert_raises_the_dark_tones(self):
+        region_map = np.array([[0, 1]], dtype=np.int32)
+        kwargs = dict(base_mm=1.0, relief_mm=4.0, px=64)
+        normal = mesh.height_field(region_map, [0, 1], [0.0, 1.0], mesh.MeshOptions(**kwargs))
+        flipped = mesh.height_field(
+            region_map, [0, 1], [0.0, 1.0], mesh.MeshOptions(invert=True, **kwargs)
+        )
+        assert normal.min() == pytest.approx(flipped.min())
+        assert normal.max() == pytest.approx(flipped.max())
+        assert np.argmax(normal) != np.argmax(flipped)
+
+    def test_stl_file_declares_the_triangles_it_holds(self, tmp_path):
+        triangles = mesh.build(np.array([[1.0, 2.0], [3.0, 1.0]]), 1.0)
+        path = tmp_path / "relief.stl"
+        mesh.write_stl(triangles, path)
+        raw = path.read_bytes()
+        assert len(raw) == 84 + 50 * len(triangles)
+        assert int(np.frombuffer(raw[80:84], dtype="<u4")[0]) == len(triangles)

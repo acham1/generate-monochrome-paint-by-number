@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import mesh as mesh_mod
 from . import regions as regions_mod
 from . import render, tone
+from .mesh import MeshOptions
 
 
 @dataclass
@@ -15,6 +17,7 @@ class Result:
     outputs: list[Path]
     region_count: int
     levels: int
+    mesh_info: dict | None = None
 
 
 def convert(
@@ -30,6 +33,8 @@ def convert(
     write_lines: bool = False,
     write_svg: bool = True,
     write_pdf: bool = True,
+    write_stl: bool = False,
+    mesh_opts: MeshOptions | None = None,
 ) -> Result:
     lightness = tone.load_lightness(source, tone_opts.working_px, crop)
     prepared = tone.prepare(lightness, tone_opts)
@@ -68,4 +73,18 @@ def convert(
         render.write_pdf(found, display_grays, paint_values, region_map.shape, title, path, page)
         outputs.append(path)
 
-    return Result(source=source, outputs=outputs, region_count=len(found), levels=tone_opts.levels)
+    mesh_info = None
+    if write_stl:
+        path = out_dir / f"{stem}-relief.stl"
+        mesh_info = mesh_mod.write_relief_stl(
+            region_map, region_levels, paint_values, mesh_opts or MeshOptions(), path
+        )
+        outputs.append(path)
+
+    return Result(
+        source=source,
+        outputs=outputs,
+        region_count=len(found),
+        levels=tone_opts.levels,
+        mesh_info=mesh_info,
+    )

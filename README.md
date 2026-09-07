@@ -28,13 +28,53 @@ Each source image produces four files:
 | `<name>-lines.png` | the outlines and numbers as a plain raster, for on-screen review |
 | `<name>-pbn.pdf` | the printable template: outlines, numbers, and the swatch key |
 | `<name>-pbn.svg` | the same template as vectors, for editing or plotting |
+| `<name>-relief.stl` | a 3-D relief where brightness becomes height, for printing |
 
-Pick with `--formats` (default `png,lines,svg,pdf`).
+Pick with `--formats` (default `png,lines,svg,pdf`); add `stl` for the relief.
 
 The printed page carries only a short identifier — by default the trailing
 digits of the filename — never the filename itself, so a template can be handed
 to someone without giving away which photo it came from. Change that with
 `--label-from name|number|none`.
+
+## The 3-D relief
+
+```sh
+uv run monochrome pbn photo.jpg -o out --formats stl --stl-relief 10
+```
+
+Each region becomes a flat plateau whose height follows its brightness, so light
+areas stand proud and dark ones sit back.
+
+What makes such a relief read is not surface shading -- the plateaus are flat, so
+they all catch light identically -- but the steps shadowing and occluding their
+neighbours. That has two consequences worth knowing before printing one:
+
+- **`--stl-relief` is the knob that matters.** Below about 4mm at a 120mm width
+  the result is close to a line drawing. Around 8-10mm the picture reads
+  clearly; past 15mm the shadows start to dominate.
+- **It emphasises boundaries more than tone.** Occlusion pools against step
+  walls, so a broad recessed plateau is barely darker than a raised one. Expect
+  something closer to a woodcut than to the photograph.
+
+Pairing it with `--palette ramp` puts the tones at even height intervals, which
+suits a relief better than the fitted spacing.
+
+| option | meaning |
+| --- | --- |
+| `--stl-width` | width of the finished piece in mm (depth follows the aspect) |
+| `--stl-relief` | mm climbed from the darkest tone to the lightest |
+| `--stl-base` | solid slab under the darkest tone |
+| `--stl-px` | longest edge of the relief grid; higher is finer and much heavier |
+| `--stl-invert` | raise the dark tones instead, for a backlit piece |
+
+The mesh is built one column per sampled pixel rather than merging coplanar
+neighbours, which costs triangles but leaves the surface closed by construction:
+on real photographs it comes out with no open edges and a volume matching the
+columns it is made from, give or take float32 rounding. A few dozen edges per
+model are shared by four faces where two regions touch only at a diagonal
+corner; slicers handle those. At the default `--stl-px 300` a model is roughly
+280k triangles and 13MB, so a whole folder adds up quickly.
 
 ## Checking the framing
 
