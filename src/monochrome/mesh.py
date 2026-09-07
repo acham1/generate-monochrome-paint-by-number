@@ -37,6 +37,15 @@ class MeshOptions:
     """Longest edge of the sampled grid. Higher is finer and much heavier."""
     invert: bool = False
     """Raise the dark tones instead. For a backlit piece, where thick reads dark."""
+    border_mm: float = 0.0
+    """Width of a raised frame around the picture. 0 leaves the edge bare."""
+    border_rise_mm: float = 2.0
+    """How far the frame stands above the lightest tone. Level with it, the
+    frame vanishes wherever the picture is light at the edge, so it needs a
+    step of its own."""
+    border_gap_mm: float = 0.0
+    """A recessed gutter between frame and picture. Reads as a rebate and
+    separates the two crisply."""
 
 
 def height_field(region_map, region_levels, paint_values, opts: MeshOptions) -> np.ndarray:
@@ -54,7 +63,29 @@ def height_field(region_map, region_levels, paint_values, opts: MeshOptions) -> 
     brightness = values[levels[sampled]]
     if opts.invert:
         brightness = 1.0 - brightness
-    return opts.base_mm + opts.relief_mm * brightness
+    heights = opts.base_mm + opts.relief_mm * brightness
+
+    if opts.border_mm > 0:
+        pixel_mm = opts.width_mm / heights.shape[1]
+        gap = max(round(opts.border_gap_mm / pixel_mm), 0)
+        frame = max(round(opts.border_mm / pixel_mm), 1)
+        # The gutter first, then the frame over its outer part, so the frame
+        # keeps its full width and the gutter sits between it and the picture.
+        if gap:
+            _set_border(heights, frame + gap, opts.base_mm)
+        _set_border(heights, frame, opts.base_mm + opts.relief_mm + opts.border_rise_mm)
+    return heights
+
+
+def _set_border(heights: np.ndarray, band: int, value: float) -> None:
+    """Flatten a band of `band` pixels around the edge to `value`, in place."""
+    band = min(band, heights.shape[0] // 2, heights.shape[1] // 2)
+    if band < 1:
+        return
+    heights[:band, :] = value
+    heights[-band:, :] = value
+    heights[:, :band] = value
+    heights[:, -band:] = value
 
 
 def _oriented(a, b, c, d, outward):

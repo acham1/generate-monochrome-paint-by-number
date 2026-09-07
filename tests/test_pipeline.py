@@ -333,3 +333,46 @@ class TestMesh:
         raw = path.read_bytes()
         assert len(raw) == 84 + 50 * len(triangles)
         assert int(np.frombuffer(raw[80:84], dtype="<u4")[0]) == len(triangles)
+
+
+class TestBorder:
+    """A frame is applied to the height field, so the mesh code stays unaware."""
+
+    def _heights(self, **kw):
+        region_map = np.zeros((80, 80), dtype=np.int32)
+        opts = mesh.MeshOptions(width_mm=80.0, base_mm=2.0, relief_mm=6.0, px=80, **kw)
+        return mesh.height_field(region_map, [0], [0.0], opts), opts
+
+    def test_off_by_default(self):
+        heights, _ = self._heights()
+        assert heights.max() == pytest.approx(2.0), "a flat dark picture stays flat"
+
+    def test_frame_stands_above_the_lightest_tone(self):
+        heights, opts = self._heights(border_mm=5.0, border_rise_mm=3.0)
+        top = opts.base_mm + opts.relief_mm + opts.border_rise_mm
+        assert heights[0, 0] == pytest.approx(top)
+        assert heights[40, 40] == pytest.approx(2.0), "the middle is untouched"
+
+    def test_frame_width_follows_millimetres(self):
+        # 80mm wide over 80 columns, so 5mm of frame is 5 columns.
+        heights, _ = self._heights(border_mm=5.0)
+        assert heights[40, 4] != pytest.approx(2.0)
+        assert heights[40, 5] == pytest.approx(2.0)
+
+    def test_gap_sits_between_frame_and_picture(self):
+        heights, opts = self._heights(border_mm=4.0, border_gap_mm=3.0, border_rise_mm=1.0)
+        top = opts.base_mm + opts.relief_mm + opts.border_rise_mm
+        assert heights[40, 0] == pytest.approx(top), "frame keeps its full width"
+        assert heights[40, 3] == pytest.approx(top)
+        assert heights[40, 5] == pytest.approx(opts.base_mm), "gutter is recessed"
+        assert heights[40, 40] == pytest.approx(opts.base_mm)
+
+    def test_frame_never_swallows_the_whole_picture(self):
+        heights, _ = self._heights(border_mm=500.0)
+        assert heights.shape == (80, 80)
+
+    def test_bordered_surface_is_still_closed(self):
+        heights, opts = self._heights(border_mm=6.0, border_gap_mm=2.0)
+        counts = TestMesh._edge_counts(mesh.build(heights, opts.width_mm / heights.shape[1]))
+        assert min(counts.values()) >= 2
+        assert not [e for e, n in counts.items() if n % 2]

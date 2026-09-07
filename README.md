@@ -67,6 +67,25 @@ suits a relief better than the fitted spacing.
 | `--stl-base` | solid slab under the darkest tone |
 | `--stl-px` | longest edge of the relief grid; higher is finer and much heavier |
 | `--stl-invert` | raise the dark tones instead, for a backlit piece |
+| `--stl-border` | width of a raised frame in mm; 0 leaves the edge bare |
+| `--stl-border-rise` | how far the frame stands above the lightest tone |
+| `--stl-border-gap` | recessed gutter between frame and picture |
+
+A frame earns its place for two reasons that have nothing to do with taste.
+Without one, the outer band of the picture is anomalously bright: interior
+regions are occluded by their neighbours and edge regions have nothing outside
+them to do the same. A raised frame restores that, and its inward shadow defines
+where the picture stops. It also stiffens what is otherwise a large flat plate.
+
+Give it a rise of its own rather than levelling it with the lightest tone, or it
+disappears wherever the picture happens to be light at the edge. `--stl-border 6
+--stl-border-gap 2` reads well. The frame is applied to the height field before
+the mesh is built, so it joins the same ladder of wall heights and the surface
+stays closed; on real photographs it slightly *reduces* the pinched corners, by
+flattening the noisiest part of the edge.
+
+What a frame does not do is fix the interior. Broad plateaus still shade weakly
+whatever surrounds them.
 
 The mesh is built one column per sampled pixel rather than merging coplanar
 neighbours, which costs triangles but leaves the surface closed by construction:

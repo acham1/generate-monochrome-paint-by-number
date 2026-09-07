@@ -130,6 +130,21 @@ def pbn(
         min=16,
         help="Longest edge of the relief grid. Higher is finer and much heavier.",
     ),
+    stl_border: float = typer.Option(
+        MESH_DEFAULTS.border_mm,
+        "--stl-border",
+        help="Width in mm of a raised frame around the relief. 0 leaves it bare.",
+    ),
+    stl_border_rise: float = typer.Option(
+        MESH_DEFAULTS.border_rise_mm,
+        "--stl-border-rise",
+        help="How far the frame stands above the lightest tone.",
+    ),
+    stl_border_gap: float = typer.Option(
+        MESH_DEFAULTS.border_gap_mm,
+        "--stl-border-gap",
+        help="Recessed gutter in mm between frame and picture.",
+    ),
     stl_invert: bool = typer.Option(
         False, "--stl-invert", help="Raise the dark tones instead, for a backlit piece."
     ),
@@ -212,6 +227,9 @@ def pbn(
         base_mm=stl_base,
         px=stl_px,
         invert=stl_invert,
+        border_mm=stl_border,
+        border_rise_mm=stl_border_rise,
+        border_gap_mm=stl_border_gap,
     )
 
     tone_opts = ToneOptions(
