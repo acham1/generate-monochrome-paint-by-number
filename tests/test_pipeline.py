@@ -310,14 +310,14 @@ class TestMesh:
 
     def test_height_field_spans_base_to_base_plus_relief(self):
         region_map = np.array([[0, 1], [2, 2]], dtype=np.int32)
-        opts = mesh.MeshOptions(base_mm=2.0, relief_mm=6.0, px=64)
+        opts = mesh.MeshOptions(base_mm=2.0, relief_mm=6.0, max_mm=64.0, nozzle_mm=1.0)
         heights = mesh.height_field(region_map, [0, 1, 2], [0.0, 0.5, 1.0], opts)
         assert heights.min() == pytest.approx(2.0)
         assert heights.max() == pytest.approx(8.0)
 
     def test_invert_raises_the_dark_tones(self):
         region_map = np.array([[0, 1]], dtype=np.int32)
-        kwargs = dict(base_mm=1.0, relief_mm=4.0, px=64)
+        kwargs = dict(base_mm=1.0, relief_mm=4.0, max_mm=64.0, nozzle_mm=1.0)
         normal = mesh.height_field(region_map, [0, 1], [0.0, 1.0], mesh.MeshOptions(**kwargs))
         flipped = mesh.height_field(
             region_map, [0, 1], [0.0, 1.0], mesh.MeshOptions(invert=True, **kwargs)
@@ -340,7 +340,7 @@ class TestBorder:
 
     def _heights(self, **kw):
         region_map = np.zeros((80, 80), dtype=np.int32)
-        opts = mesh.MeshOptions(width_mm=80.0, base_mm=2.0, relief_mm=6.0, px=80, **kw)
+        opts = mesh.MeshOptions(max_mm=80.0, nozzle_mm=1.0, base_mm=2.0, relief_mm=6.0, **kw)
         return mesh.height_field(region_map, [0], [0.0], opts), opts
 
     def test_off_by_default(self):
@@ -373,6 +373,6 @@ class TestBorder:
 
     def test_bordered_surface_is_still_closed(self):
         heights, opts = self._heights(border_mm=6.0, border_gap_mm=2.0)
-        counts = TestMesh._edge_counts(mesh.build(heights, opts.width_mm / heights.shape[1]))
+        counts = TestMesh._edge_counts(mesh.build(heights, mesh.pitch_mm(heights.shape, opts)))
         assert min(counts.values()) >= 2
         assert not [e for e, n in counts.items() if n % 2]

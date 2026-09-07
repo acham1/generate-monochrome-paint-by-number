@@ -113,8 +113,11 @@ def pbn(
         "measured at) or ramp (even steps black to white). Unlike --mode this "
         "does not move any region; it only changes the grays poured into them.",
     ),
-    stl_width: float = typer.Option(
-        MESH_DEFAULTS.width_mm, "--stl-width", help="Width of the printed relief, in mm."
+    stl_max: float = typer.Option(
+        MESH_DEFAULTS.max_mm,
+        "--stl-max",
+        help="Longest edge of the printed relief in mm. The other follows the "
+        "image's aspect, so one figure fits either orientation to the same bed.",
     ),
     stl_relief: float = typer.Option(
         MESH_DEFAULTS.relief_mm,
@@ -124,11 +127,11 @@ def pbn(
     stl_base: float = typer.Option(
         MESH_DEFAULTS.base_mm, "--stl-base", help="Solid slab under the darkest tone, in mm."
     ),
-    stl_px: int = typer.Option(
-        MESH_DEFAULTS.px,
-        "--stl-px",
-        min=16,
-        help="Longest edge of the relief grid. Higher is finer and much heavier.",
+    stl_nozzle: float = typer.Option(
+        MESH_DEFAULTS.nozzle_mm,
+        "--stl-nozzle",
+        help="Nozzle width in mm. Sets the sampling pitch at one column per bead, "
+        "so detail tracks the printed size automatically.",
     ),
     stl_border: float = typer.Option(
         MESH_DEFAULTS.border_mm,
@@ -222,10 +225,10 @@ def pbn(
         raise typer.BadParameter("palette must be fitted or ramp")
 
     mesh_opts = MeshOptions(
-        width_mm=stl_width,
+        max_mm=stl_max,
         relief_mm=stl_relief,
         base_mm=stl_base,
-        px=stl_px,
+        nozzle_mm=stl_nozzle,
         invert=stl_invert,
         border_mm=stl_border,
         border_rise_mm=stl_border_rise,

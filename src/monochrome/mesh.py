@@ -24,8 +24,9 @@ STL_RECORD = np.dtype([("normal", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2
 class MeshOptions:
     """Physical shape of the printed relief, in millimetres."""
 
-    width_mm: float = 120.0
-    """Width of the finished piece. Depth follows from the image's aspect."""
+    max_mm: float = 170.0
+    """Longest edge of the finished piece. The other follows from the image's
+    aspect, so one figure fits either orientation to the same bed."""
     relief_mm: float = 8.0
     """Height climbed between the darkest tone and the lightest. This is the
     knob that decides whether the relief reads: the shading comes from steps
@@ -33,8 +34,11 @@ class MeshOptions:
     outline. Below about 4mm at this width the picture barely appears."""
     base_mm: float = 2.0
     """Solid slab under the darkest tone, so nothing is paper thin."""
-    px: int = 300
-    """Longest edge of the sampled grid. Higher is finer and much heavier."""
+    nozzle_mm: float = 0.4
+    """Sampling pitch: one grid column per nozzle width. A printer cannot
+    resolve anything narrower than its bead, and sampling coarser than that
+    throws away detail it could have given, so the grid is derived from this
+    rather than set independently."""
     invert: bool = False
     """Raise the dark tones instead. For a backlit piece, where thick reads dark."""
     border_mm: float = 0.0
@@ -48,13 +52,19 @@ class MeshOptions:
     separates the two crisply."""
 
 
+def pitch_mm(grid_shape: tuple[int, int], opts: MeshOptions) -> float:
+    """Millimetres per grid column, once the picture is sampled."""
+    return opts.max_mm / max(grid_shape)
+
+
 def height_field(region_map, region_levels, paint_values, opts: MeshOptions) -> np.ndarray:
     """Sample the picture onto a grid of column heights in millimetres."""
     levels = np.asarray(region_levels)
     values = np.asarray(paint_values, dtype=np.float64)
     h, w = region_map.shape
 
-    scale = opts.px / max(h, w)
+    columns = max(round(opts.max_mm / opts.nozzle_mm), 2)
+    scale = columns / max(h, w)
     new_h, new_w = max(round(h * scale), 2), max(round(w * scale), 2)
     rows = np.linspace(0, h - 1, new_h).round().astype(int)
     cols = np.linspace(0, w - 1, new_w).round().astype(int)
@@ -66,7 +76,7 @@ def height_field(region_map, region_levels, paint_values, opts: MeshOptions) -> 
     heights = opts.base_mm + opts.relief_mm * brightness
 
     if opts.border_mm > 0:
-        pixel_mm = opts.width_mm / heights.shape[1]
+        pixel_mm = pitch_mm(heights.shape, opts)
         gap = max(round(opts.border_gap_mm / pixel_mm), 0)
         frame = max(round(opts.border_mm / pixel_mm), 1)
         # The gutter first, then the frame over its outer part, so the frame
@@ -211,12 +221,12 @@ def write_stl(triangles: np.ndarray, path) -> None:
 def write_relief_stl(region_map, region_levels, paint_values, opts: MeshOptions, path) -> dict:
     """Build and write the relief, returning its physical size for reporting."""
     heights = height_field(region_map, region_levels, paint_values, opts)
-    pixel_mm = opts.width_mm / heights.shape[1]
+    pixel_mm = pitch_mm(heights.shape, opts)
     triangles = build(heights, pixel_mm)
     write_stl(triangles, path)
     return {
         "triangles": len(triangles),
-        "width_mm": opts.width_mm,
+        "width_mm": heights.shape[1] * pixel_mm,
         "depth_mm": heights.shape[0] * pixel_mm,
         "height_mm": float(heights.max()),
         "grid": heights.shape,

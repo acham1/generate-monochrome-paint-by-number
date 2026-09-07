@@ -53,6 +53,11 @@ neighbours. That has two consequences worth knowing before printing one:
 - **`--stl-relief` is the knob that matters.** Below about 4mm at a 120mm width
   the result is close to a line drawing. Around 8-10mm the picture reads
   clearly; past 15mm the shadows start to dominate.
+- **Scale relief with size.** What sets the shading is the ratio of step height
+  to the width of the piece, not either alone. Printing the same file larger
+  while leaving `--stl-relief` alone makes it read slightly *flatter*, so raise
+  the relief in proportion. Going 120mm to 170mm wants 8mm to become about
+  11mm; measured on the occlusion model that restores the contrast exactly.
 - **It emphasises boundaries more than tone.** Occlusion pools against step
   walls, so a broad recessed plateau is barely darker than a raised one. Expect
   something closer to a woodcut than to the photograph.
@@ -62,10 +67,10 @@ suits a relief better than the fitted spacing.
 
 | option | meaning |
 | --- | --- |
-| `--stl-width` | width of the finished piece in mm (depth follows the aspect) |
+| `--stl-max` | longest edge of the finished piece in mm; the other follows the aspect |
 | `--stl-relief` | mm climbed from the darkest tone to the lightest |
 | `--stl-base` | solid slab under the darkest tone |
-| `--stl-px` | longest edge of the relief grid; higher is finer and much heavier |
+| `--stl-nozzle` | nozzle width; sets the sampling pitch at one column per bead |
 | `--stl-invert` | raise the dark tones instead, for a backlit piece |
 | `--stl-border` | width of a raised frame in mm; 0 leaves the edge bare |
 | `--stl-border-rise` | how far the frame stands above the lightest tone |
@@ -86,6 +91,11 @@ flattening the noisiest part of the edge.
 
 What a frame does not do is fix the interior. Broad plateaus still shade weakly
 whatever surrounds them.
+
+`--stl-max` sizes the longest edge whichever way the picture is turned, so one
+figure fits both orientations to the same bed, and `--stl-nozzle` derives the
+grid from it. Sampling coarser than one bead throws away detail the printer
+could have given; finer only inflates the file.
 
 The mesh is built one column per sampled pixel rather than merging coplanar
 neighbours, which costs triangles but leaves the surface closed by construction:
