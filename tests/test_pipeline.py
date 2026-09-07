@@ -376,3 +376,37 @@ class TestBorder:
         counts = TestMesh._edge_counts(mesh.build(heights, mesh.pitch_mm(heights.shape, opts)))
         assert min(counts.values()) >= 2
         assert not [e for e, n in counts.items() if n % 2]
+
+
+class TestWallRatio:
+    """The printability limit is a ratio, not a relief height."""
+
+    def test_ratio_is_step_over_narrowest_plateau(self):
+        assert mesh.wall_ratio(5.0, 1.0) == pytest.approx(5.0)
+        assert mesh.wall_ratio(5.0, 2.5) == pytest.approx(2.0)
+
+    def test_a_vanishing_plateau_is_unprintable(self):
+        assert mesh.wall_ratio(5.0, 0.0) == float("inf")
+
+    def test_same_relief_passes_or_fails_on_region_width(self):
+        """Why no single relief height is safe: it depends on the picture."""
+        step = 5.0
+        assert mesh.wall_ratio(step, 8.0) < mesh.WALL_RATIO_WARN
+        assert mesh.wall_ratio(step, 0.3) > mesh.WALL_RATIO_WARN
+
+    def test_report_carries_the_numbers_behind_the_warning(self, tmp_path):
+        region_map = np.zeros((40, 40), dtype=np.int32)
+        opts = mesh.MeshOptions(max_mm=40.0, nozzle_mm=1.0, relief_mm=10.0)
+        info = mesh.write_relief_stl(
+            region_map, [0], [0.0, 1.0, 0.5], opts, tmp_path / "r.stl", narrowest_px=5.0
+        )
+        assert info["step_mm"] == pytest.approx(5.0), "3 tones means 2 steps"
+        assert info["narrowest_mm"] == pytest.approx(10.0), "5px radius over 1mm pixels"
+        assert info["wall_ratio"] == pytest.approx(0.5)
+
+    def test_report_omits_the_ratio_when_width_is_unknown(self, tmp_path):
+        region_map = np.zeros((40, 40), dtype=np.int32)
+        opts = mesh.MeshOptions(max_mm=40.0, nozzle_mm=1.0)
+        info = mesh.write_relief_stl(region_map, [0], [0.0], opts, tmp_path / "r.stl")
+        assert "wall_ratio" not in info
+        assert "step_mm" in info

@@ -218,16 +218,53 @@ def write_stl(triangles: np.ndarray, path) -> None:
         handle.write(records.tobytes())
 
 
-def write_relief_stl(region_map, region_levels, paint_values, opts: MeshOptions, path) -> dict:
+# A step this many times taller than the narrowest plateau is wide prints as a
+# thin wall that wobbles under the nozzle. Past roughly twice this it snaps off.
+# See "How deep to make the relief" in the README for where the figure comes from.
+WALL_RATIO_WARN = 10.0
+
+
+def wall_ratio(step_mm: float, narrowest_mm: float) -> float:
+    """How tall each step stands relative to the thinnest plateau's width.
+
+    This, not the relief height on its own, is what decides whether a relief can
+    be printed: the same 25mm of relief is comfortable on broad regions and
+    unprintable on slivers.
+    """
+    if narrowest_mm <= 0:
+        return float("inf")
+    return step_mm / narrowest_mm
+
+
+def write_relief_stl(
+    region_map,
+    region_levels,
+    paint_values,
+    opts: MeshOptions,
+    path,
+    narrowest_px: float | None = None,
+) -> dict:
     """Build and write the relief, returning its physical size for reporting."""
     heights = height_field(region_map, region_levels, paint_values, opts)
     pixel_mm = pitch_mm(heights.shape, opts)
     triangles = build(heights, pixel_mm)
     write_stl(triangles, path)
-    return {
+
+    tones = len(np.asarray(paint_values))
+    step_mm = opts.relief_mm / max(tones - 1, 1)
+    info = {
         "triangles": len(triangles),
         "width_mm": heights.shape[1] * pixel_mm,
         "depth_mm": heights.shape[0] * pixel_mm,
         "height_mm": float(heights.max()),
         "grid": heights.shape,
+        "step_mm": step_mm,
     }
+    if narrowest_px is not None:
+        # label_radius is an inscribed radius in source pixels; the printed
+        # piece spans max_mm across the source map's longest edge.
+        source_mm = opts.max_mm / max(region_map.shape)
+        narrowest_mm = 2 * narrowest_px * source_mm
+        info["narrowest_mm"] = narrowest_mm
+        info["wall_ratio"] = wall_ratio(step_mm, narrowest_mm)
+    return info

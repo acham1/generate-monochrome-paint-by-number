@@ -77,7 +77,12 @@ def convert(
     if write_stl:
         path = out_dir / f"{stem}-relief.stl"
         mesh_info = mesh_mod.write_relief_stl(
-            region_map, region_levels, paint_values, mesh_opts or MeshOptions(), path
+            region_map,
+            region_levels,
+            paint_values,
+            mesh_opts or MeshOptions(),
+            path,
+            narrowest_px=min((r.label_radius for r in found), default=None),
         )
         outputs.append(path)
 

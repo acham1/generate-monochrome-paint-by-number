@@ -12,6 +12,7 @@ import typer
 from .pipeline import convert
 from .regions import RegionOptions
 from . import framing as framing_mod
+from . import mesh as mesh_mod
 from . import sheet as sheet_mod
 from .render import PAGE_SIZES
 from .mesh import MeshOptions
@@ -301,6 +302,13 @@ def pbn(
                 f"    relief {info['width_mm']:.0f} x {info['depth_mm']:.0f} x "
                 f"{info['height_mm']:.1f} mm, {info['triangles']:,} triangles"
             )
+            ratio = info.get("wall_ratio")
+            if ratio is not None and ratio > mesh_mod.WALL_RATIO_WARN:
+                typer.echo(
+                    f"    warning: {info['step_mm']:.1f}mm steps against a "
+                    f"{info['narrowest_mm']:.1f}mm plateau is {ratio:.0f}:1 - thin "
+                    f"walls may not print. Lower --stl-relief or raise --min-region."
+                )
 
 
 @app.command()

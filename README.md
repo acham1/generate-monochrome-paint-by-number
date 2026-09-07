@@ -58,6 +58,48 @@ neighbours. That has two consequences worth knowing before printing one:
   while leaving `--stl-relief` alone makes it read slightly *flatter*, so raise
   the relief in proportion. Going 120mm to 170mm wants 8mm to become about
   11mm; measured on the occlusion model that restores the contrast exactly.
+
+### How deep to make the relief
+
+Deeper is not better past a point, and the point arrives early. Measured on the
+occlusion model, for one photo at 170mm wide with 6 tones:
+
+| `--stl-relief` | step | contrast (AO spread) | mean brightness | solid volume |
+| --- | --- | --- | --- | --- |
+| 2mm | 0.4mm | 0.164 | 0.906 | 62cm³ |
+| 5mm | 1.0mm | 0.239 | 0.828 | 95cm³ |
+| 11mm | 2.2mm | 0.302 | 0.744 | 160cm³ |
+| 25mm | 5.0mm | 0.345 | 0.657 | 313cm³ |
+| 50mm | 10mm | 0.362 | 0.606 | 586cm³ |
+| 100mm | 20mm | 0.368 | 0.588 | 1131cm³ |
+| 178mm | 36mm | 0.370 | 0.584 | 1982cm³ |
+
+Sixteen times the depth buys 23% more contrast, and almost all of it has arrived
+by 25mm. Note the mean falling alongside: past that point the relief is not
+growing more differentiated, it is going uniformly darker as everything sinks
+into shadow. Volume, meanwhile, climbs linearly - 178mm of relief is around
+2.5kg of PLA if solid, and days of printing.
+
+Two limits bite before the contrast does:
+
+- **Thin walls.** A step standing tall over a narrow plateau is a thin wall, and
+  thin walls wobble under the nozzle and snap. The measure is the *ratio* of
+  step height to the narrowest plateau's width, which is why there is no single
+  safe relief height: the same 25mm is comfortable on broad regions and hopeless
+  on slivers. FDM gets unreliable past roughly 10:1 and fails past 20:1, so the
+  tool computes the ratio for the actual picture and warns above `WALL_RATIO_WARN`.
+  Widen the slivers with `--min-region`, or print larger, before adding depth.
+- **Parallax.** Deep steps hide their neighbours at any off-axis angle, so the
+  picture only reads from dead perpendicular and you spend the rest of the time
+  looking at the sides of walls. Around 2mm of step this is unnoticeable.
+
+**11-25mm at 170mm wide is the useful range**, with 15mm a good compromise if
+you want more punch than the low end. Those figures are geometry and simulation,
+not a test print; treat the thin-wall thresholds as the usual FDM rule of thumb.
+
+One caveat on the table: the occlusion model only reaches about 11mm sideways,
+so it understates shadowing once steps exceed that. The saturation is real, but
+the deep-relief figures flatter them.
 - **It emphasises boundaries more than tone.** Occlusion pools against step
   walls, so a broad recessed plateau is barely darker than a raised one. Expect
   something closer to a woodcut than to the photograph.
