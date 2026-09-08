@@ -567,3 +567,29 @@ class TestLithophaneLadder:
     def test_ladder_steps_is_order_independent(self):
         assert mesh.ladder_steps([0.4, 0.8, 1.2], 0.2) == [2, 2]
         assert mesh.ladder_steps([1.2, 0.4, 0.8], 0.2) == [2, 2]
+
+
+class TestLevelsRange:
+    """Tone count is shared across commands, so the strip can match the plate."""
+
+    def _bound(self, command, name):
+        for param in command.params:
+            if param.name == name:
+                return param.type
+
+    def test_pbn_and_litho_test_agree_on_the_ceiling(self):
+        import typer.main
+
+        pbn = typer.main.get_command(cli.app).commands["pbn"]
+        strip = typer.main.get_command(cli.app).commands["litho-test"]
+        assert self._bound(pbn, "levels").max == self._bound(strip, "levels").max
+        assert self._bound(pbn, "levels").max == cli.MAX_LEVELS
+
+    @pytest.mark.parametrize("levels", [2, 6, 12, 24, cli.MAX_LEVELS])
+    def test_quantizer_handles_the_whole_range(self, tmp_path, levels):
+        opts = tone.ToneOptions(levels=levels, working_px=200, smooth=0)
+        light = tone.load_lightness(gradient_photo(tmp_path, size=(400, 300)), opts.working_px)
+        level_map, values = tone.quantize(light, opts)
+        assert values.shape == (levels,)
+        assert np.all(np.diff(values) > 0)
+        assert level_map.max() <= levels - 1

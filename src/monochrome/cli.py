@@ -27,6 +27,11 @@ REGION_DEFAULTS = RegionOptions()
 MESH_DEFAULTS = MeshOptions()
 LITHO_DEFAULTS = LithophaneOptions()
 
+# Shared by every command, so a calibration strip can always be matched by a
+# plate. The ceiling is deliberately loose: what is sensible varies by output,
+# and the tone-collapse and ladder checks catch settings that cannot be printed.
+MAX_LEVELS = 32
+
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
 
 
@@ -72,7 +77,15 @@ def pbn(
     ),
     out: Path = typer.Option(Path("out"), "--out", "-o", help="Output directory."),
     levels: int = typer.Option(
-        TONE_DEFAULTS.levels, "--levels", "-l", min=2, max=12, help="Number of gray tones."
+        TONE_DEFAULTS.levels,
+        "--levels",
+        "-l",
+        min=2,
+        max=MAX_LEVELS,
+        help="Number of tones. What is useful depends on the output: about six for "
+        "a printed template, since a person has to mix and keep track of them; "
+        "many more for a lithophane, where the limit is layers in the thickness "
+        "range rather than patience.",
     ),
     min_region: int = typer.Option(
         REGION_DEFAULTS.min_area,
@@ -401,7 +414,7 @@ def litho_test(
         Path("litho-test.stl"), "--out", "-o", help="Where to write the strip."
     ),
     levels: int = typer.Option(
-        TONE_DEFAULTS.levels, "--levels", "-l", min=2, max=24, help="How many tones."
+        TONE_DEFAULTS.levels, "--levels", "-l", min=2, max=MAX_LEVELS, help="How many tones."
     ),
     thin: float = typer.Option(LITHO_DEFAULTS.thin_mm, "--litho-thin"),
     thick: float = typer.Option(LITHO_DEFAULTS.thick_mm, "--litho-thick"),

@@ -251,8 +251,27 @@ construction. The default is 2 layers from a 2-layer base, giving 2, 4, 6, 8,
 10, 12 layers — 0.4 to 2.4mm. Runs that set a range instead are checked, and
 report the spacing they got along with the flag that would even it out.
 
-**Thin is what buys contrast**, since the brightest the picture gets is whatever
-the thinnest tone passes. Two layers is the floor worth trying, with two risks:
+**Use plenty of tones, and small regions.** The constraints that shape a printed
+template do not apply here: nobody has to mix the tones or paint inside the
+lines, and a small region is just a small patch of thickness rather than a thin
+wall waiting to snap. On a portrait, dropping `--min-region` from 450 to 60 did
+more for the faces than raising `--levels` did, and both together did more than
+either. Ten to twenty tones is reasonable; past about twenty the darkest tones
+are opaque enough to be indistinguishable from each other.
+
+Compute the regions at a *higher* resolution than the print grid and let the
+sampler downscale. Matching `--working-px` to the grid seems tidier and is much
+worse: the smoothing radius is fixed in working pixels, so at grid resolution it
+becomes a millimetre of real blur and faces disappear.
+
+**Thin brightens; range is what gives contrast.** Transmission falls off
+exponentially, so the contrast *ratio* depends only on the difference between
+thickest and thinnest, not on where that range sits. Dropping the floor from two
+layers to one at the same tone count leaves contrast identical and raises the
+brightest tone from 57% to 76% transmission - a brighter plate, not a punchier
+one. To increase contrast, extend the thick end or add tones.
+
+Two layers is a sensible floor, with two risks:
 the largest patch of lightest tone becomes a membrane a few centimetres across
 (29mm on one photo tested), and with only two layers nothing averages out the
 extrusion paths, so they can show as striping against the light. Both are cheap
@@ -362,9 +381,19 @@ The knobs that matter most, in rough order of effect:
   only the grays poured into them, so it is a contrast decision rather than a
   segmentation one. Pairing `ramp` with the default k-means `--mode` gives the
   full tonal range while every tone still covers a useful share of the picture.
-- `--levels` — how many tones to mix. More levels means more regions. This is
-  bounded by what a person can realistically mix and keep track of, not by what
-  the histogram wants; six is about the ceiling.
+- `--levels` — how many tones. More levels means more regions. What is useful
+  depends entirely on the output, so the ceiling is loose (32) and the sensible
+  figure is not:
+
+  | output | useful range | what limits it |
+  | --- | --- | --- |
+  | printed template | 4–8 | a person has to mix and keep track of them |
+  | relief | 5–8 | more tones means shallower steps for the same depth |
+  | lithophane | 10–20 | layers available in the thickness range |
+
+  Six is right for painting and nowhere near right for a lithophane, where each
+  tone costs only a layer or two of thickness. Going 6 to 10 on a lithophane was
+  the difference between flat faces and readable ones.
 - `--crop left,top,right,bottom` — cut the frame down before anything else.
 - `--no-crop` — ignore every crop, manifest ones included, and render full
   frames. Subject boxes still apply, so this isolates what the cropping is
