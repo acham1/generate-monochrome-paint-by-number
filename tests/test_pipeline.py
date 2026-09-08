@@ -469,32 +469,32 @@ class TestLithophane:
     """Thickness carries the picture, so the mapping inverts and snaps to layers."""
 
     def test_lightest_tone_is_thinnest(self):
-        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0)
+        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0, step_layers=0)
         thickness = mesh.lithophane_thickness([0.0, 0.5, 1.0], opts)
         assert thickness[0] == pytest.approx(3.0), "darkest blocks the most light"
         assert thickness[-1] == pytest.approx(0.6), "lightest lets the most through"
         assert np.all(np.diff(thickness) < 0)
 
     def test_thickness_snaps_to_whole_layers(self):
-        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=3.0, layer_mm=0.2)
+        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=3.0, layer_mm=0.2, step_layers=0)
         thickness = mesh.lithophane_thickness(np.linspace(0, 1, 6), opts)
         layers = thickness / 0.2
         assert layers == pytest.approx(np.round(layers))
         assert (thickness / 0.2).min() >= 1.0
 
     def test_snapping_never_produces_a_zero_thickness(self):
-        opts = mesh.LithophaneOptions(thin_mm=0.05, thick_mm=1.0, layer_mm=0.2)
+        opts = mesh.LithophaneOptions(thin_mm=0.05, thick_mm=1.0, layer_mm=0.2, step_layers=0)
         thickness = mesh.lithophane_thickness([1.0], opts)
         assert thickness[0] == pytest.approx(0.2), "floors at one layer, not zero"
 
     def test_gamma_above_one_thins_the_midtones(self):
-        kw = dict(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0)
+        kw = dict(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0, step_layers=0)
         flat = mesh.lithophane_thickness([0.5], mesh.LithophaneOptions(gamma=1.0, **kw))
         thinned = mesh.lithophane_thickness([0.5], mesh.LithophaneOptions(gamma=2.0, **kw))
         assert thinned[0] < flat[0]
 
     def test_gamma_leaves_the_endpoints_alone(self):
-        kw = dict(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0)
+        kw = dict(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0, step_layers=0)
         for gamma in (1.0, 2.0, 3.0):
             thickness = mesh.lithophane_thickness(
                 [0.0, 1.0], mesh.LithophaneOptions(gamma=gamma, **kw)
@@ -504,7 +504,7 @@ class TestLithophane:
 
     def test_too_narrow_a_range_collapses_tones(self):
         """The condition the CLI warns about: two tones printing identically."""
-        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=0.8, layer_mm=0.2)
+        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=0.8, layer_mm=0.2, step_layers=0)
         thickness = mesh.lithophane_thickness(np.linspace(0, 1, 6), opts)
         assert len(np.unique(thickness)) < 6
 
@@ -515,7 +515,8 @@ class TestLithophane:
             region_map, [0, 1, 2], [0.0, 0.5, 1.0], opts, tmp_path / "l.stl"
         )
         assert info["distinct_thicknesses"] == 3
-        assert info["layers"] == [15, 9, 3]
+        assert info["layers"] == [6, 4, 2], "the default even ladder, two layers apart"
+        assert mesh.ladder_steps(info["thickness_mm"], opts.layer_mm) == [2, 2]
 
     def test_test_strip_has_one_patch_per_tone(self, tmp_path):
         opts = mesh.LithophaneOptions(nozzle_mm=1.0)
@@ -523,3 +524,46 @@ class TestLithophane:
         assert info["width_mm"] == pytest.approx(60.0)
         assert info["depth_mm"] == pytest.approx(10.0)
         assert len(info["thickness_mm"]) == 6
+
+
+class TestLithophaneLadder:
+    """Tones must be evenly spaced in whole layers, which snapping alone misses."""
+
+    def test_step_layers_gives_an_even_ladder(self):
+        opts = mesh.LithophaneOptions(thin_mm=0.4, layer_mm=0.2, step_layers=2)
+        thickness = mesh.lithophane_thickness(np.linspace(0, 1, 6), opts)
+        assert mesh.ladder_steps(thickness, 0.2) == [2, 2, 2, 2, 2]
+        assert (thickness / 0.2).round().astype(int).tolist() == [12, 10, 8, 6, 4, 2]
+
+    def test_base_is_the_thin_end_in_whole_layers(self):
+        opts = mesh.LithophaneOptions(thin_mm=0.4, layer_mm=0.2, step_layers=2)
+        thickness = mesh.lithophane_thickness(np.linspace(0, 1, 4), opts)
+        assert thickness.min() == pytest.approx(0.4)
+
+    def test_a_snapped_range_can_come_out_uneven(self):
+        """The defect that motivated step_layers: 12 layers over 5 gaps."""
+        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=3.0, layer_mm=0.2, step_layers=0)
+        thickness = mesh.lithophane_thickness(np.linspace(0, 1, 6), opts)
+        assert mesh.ladder_steps(thickness, 0.2) == [2, 3, 2, 3, 2]
+
+    def test_step_layers_overrides_the_thick_end(self):
+        loose = mesh.LithophaneOptions(thin_mm=0.4, thick_mm=99.0, layer_mm=0.2, step_layers=2)
+        thickness = mesh.lithophane_thickness(np.linspace(0, 1, 6), loose)
+        assert thickness.max() == pytest.approx(2.4), "derived, not taken from thick_mm"
+
+    def test_step_layers_ignores_gamma(self):
+        kw = dict(thin_mm=0.4, layer_mm=0.2, step_layers=2)
+        a = mesh.lithophane_thickness([0.0, 0.5, 1.0], mesh.LithophaneOptions(gamma=1.0, **kw))
+        b = mesh.lithophane_thickness([0.0, 0.5, 1.0], mesh.LithophaneOptions(gamma=2.5, **kw))
+        assert a == pytest.approx(b)
+
+    def test_more_tones_climb_further(self):
+        opts = mesh.LithophaneOptions(thin_mm=0.4, layer_mm=0.2, step_layers=2)
+        six = mesh.lithophane_thickness(np.linspace(0, 1, 6), opts)
+        ten = mesh.lithophane_thickness(np.linspace(0, 1, 10), opts)
+        assert ten.max() > six.max()
+        assert mesh.ladder_steps(ten, 0.2) == [2] * 9
+
+    def test_ladder_steps_is_order_independent(self):
+        assert mesh.ladder_steps([0.4, 0.8, 1.2], 0.2) == [2, 2]
+        assert mesh.ladder_steps([1.2, 0.4, 0.8], 0.2) == [2, 2]

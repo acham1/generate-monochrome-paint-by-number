@@ -82,9 +82,15 @@ class LithophaneOptions:
     """Longest edge of the finished plate."""
     nozzle_mm: float = 0.4
     """Sampling pitch, one grid column per bead, as for the relief."""
-    thin_mm: float = 0.6
-    """Thickness under the lightest tone. The floor is what the printer can make
-    reliably solid; too thin and it turns translucent-blotchy rather than bright."""
+    thin_mm: float = 0.4
+    """Thickness under the lightest tone - two layers at 0.2mm.
+
+    Thin is what buys contrast, since brightness is what the thinnest tone can
+    pass. Two layers is the floor worth trying and it has two risks: the largest
+    patch of lightest tone becomes a membrane a few centimetres across (29mm on
+    one photo in this set), and with only two layers there is nothing to average
+    out the extrusion paths, so they can show as striping against the light.
+    Both are cheap to check on a test strip before committing to a plate."""
     thick_mm: float = 3.0
     """Thickness under the darkest tone. Light falls off steeply with thickness,
     so this reaches near-opaque well before the plate becomes chunky."""
@@ -92,10 +98,22 @@ class LithophaneOptions:
     """Snap every thickness to a whole number of layers. Printed flat, thickness
     IS layer count, so unsnapped values round unpredictably at slice time and two
     tones can collapse into the same number of layers."""
+    step_layers: int = 2
+    """If set, space the tones this many whole layers apart and derive the thick
+    end from it, ignoring `thick_mm` and `gamma`.
+
+    Worth preferring. Snapping a thin-to-thick range to layers only gives an
+    even ladder when the layer count happens to divide by the number of gaps:
+    0.6 to 3.0mm at 0.2mm is 12 layers over 5 gaps, which comes out 2, 3, 2, 3,
+    2 and puts a wobble in the tone ladder that has nothing to do with the
+    picture."""
     gamma: float = 1.0
     """Shapes the tone-to-thickness curve. Above 1 thins the midtones, brightening
     them; below 1 thickens them. The right value depends on how much your
-    filament attenuates, so it wants calibrating against a test print."""
+    filament attenuates, so it wants calibrating against a test print.
+
+    Ignored when `step_layers` is set, since an even ladder is by definition
+    a linear one."""
     border_mm: float = 0.0
     """Width of a solid opaque frame. Reads black, and stiffens a thin plate."""
 
@@ -107,12 +125,28 @@ def lithophane_thickness(paint_values, opts: LithophaneOptions) -> np.ndarray:
     layer count and the slicer will round to one anyway.
     """
     brightness = np.asarray(paint_values, dtype=np.float64)
+
+    if opts.step_layers > 0 and opts.layer_mm > 0:
+        # Rank the tones and walk up in whole layers, so the ladder is even by
+        # construction rather than by luck of the arithmetic.
+        base_layers = max(round(opts.thin_mm / opts.layer_mm), 1)
+        rank = np.argsort(np.argsort(-brightness))  # 0 for the lightest
+        return (base_layers + rank * opts.step_layers) * opts.layer_mm
+
     darkness = np.clip(1.0 - brightness, 0.0, 1.0) ** opts.gamma
     thickness = opts.thin_mm + (opts.thick_mm - opts.thin_mm) * darkness
     if opts.layer_mm > 0:
         layers = np.maximum(np.round(thickness / opts.layer_mm), 1.0)
         thickness = layers * opts.layer_mm
     return thickness
+
+
+def ladder_steps(thickness, layer_mm: float):
+    """Layer counts between consecutive tones, for checking the ladder is even."""
+    if layer_mm <= 0:
+        return []
+    layers = np.round(np.asarray(thickness) / layer_mm).astype(int)
+    return np.abs(np.diff(np.sort(layers))).tolist()
 
 
 def write_lithophane_stl(

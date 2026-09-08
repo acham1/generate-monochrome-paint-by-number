@@ -152,6 +152,14 @@ def pbn(
         help="Layer height to snap thicknesses to. Printed flat, a tone's thickness "
         "is its layer count, so unsnapped values round unpredictably.",
     ),
+    litho_step_layers: int = typer.Option(
+        LITHO_DEFAULTS.step_layers,
+        "--litho-step-layers",
+        min=0,
+        help="Space the tones this many whole layers apart, deriving the thick end "
+        "and ignoring --litho-thick and --litho-gamma. Guarantees an even ladder, "
+        "which snapping a thin-to-thick range only manages by luck.",
+    ),
     litho_gamma: float = typer.Option(
         LITHO_DEFAULTS.gamma,
         "--litho-gamma",
@@ -273,6 +281,7 @@ def pbn(
         thick_mm=litho_thick,
         layer_mm=litho_layer,
         gamma=litho_gamma,
+        step_layers=litho_step_layers,
         border_mm=litho_border,
     )
 
@@ -359,6 +368,12 @@ def pbn(
             typer.echo(f"    litho {shape}, {thin:.1f}-{thick:.1f} mm thick")
             if layers:
                 typer.echo(f"    layers per tone, dark to light: {layers}")
+            steps = mesh_mod.ladder_steps(litho["thickness_mm"], litho_layer)
+            if len(set(steps)) > 1:
+                typer.echo(
+                    f"    note: uneven ladder, steps of {steps} layers. "
+                    f"--litho-step-layers {min(steps)} would space them evenly."
+                )
             if litho["distinct_thicknesses"] < len(litho["thickness_mm"]):
                 typer.echo(
                     "    warning: two tones snapped to the same thickness and will "
@@ -392,6 +407,7 @@ def litho_test(
     thick: float = typer.Option(LITHO_DEFAULTS.thick_mm, "--litho-thick"),
     layer: float = typer.Option(LITHO_DEFAULTS.layer_mm, "--litho-layer"),
     gamma: float = typer.Option(LITHO_DEFAULTS.gamma, "--litho-gamma"),
+    step_layers: int = typer.Option(LITHO_DEFAULTS.step_layers, "--litho-step-layers", min=0),
     nozzle: float = typer.Option(LITHO_DEFAULTS.nozzle_mm, "--stl-nozzle"),
     patch: float = typer.Option(20.0, "--patch", help="Size of each patch in mm."),
 ) -> None:
@@ -403,7 +419,12 @@ def litho_test(
     particular filament attenuates.
     """
     opts = LithophaneOptions(
-        nozzle_mm=nozzle, thin_mm=thin, thick_mm=thick, layer_mm=layer, gamma=gamma
+        nozzle_mm=nozzle,
+        thin_mm=thin,
+        thick_mm=thick,
+        layer_mm=layer,
+        gamma=gamma,
+        step_layers=step_layers,
     )
     info = mesh_mod.write_lithophane_test_strip(levels, opts, out, patch_mm=patch)
     typer.echo(f"{out}  ({info['triangles']:,} triangles)")

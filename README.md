@@ -200,11 +200,11 @@ solid either. Modelling both with typical shells - five top layers, four bottom,
 | | geometry | filament | PLA | layers |
 | --- | --- | --- | --- | --- |
 | relief, 15% infill | 194cm³ | 60cm³ | ~75g | 75 |
-| lithophane, 100% solid | 38cm³ | 38cm³ | ~47g | 15 |
+| lithophane, 100% solid | 29cm³ | 29cm³ | ~36g | 12 |
 
-So the lithophane takes about **two thirds of the relief's filament**, not a
-fifth. Still cheaper, and much faster for a reason volume does not capture: 15
-layers against 75.
+So the lithophane takes about **half of the relief's filament**, not a fifth.
+Still cheaper, and much faster for a reason volume does not capture: 12 layers
+against 75.
 
 The solid-infill requirement costs less than it sounds, because a thin plate is
 nearly all shell anyway. At 0.6 to 1.6mm the top and bottom solid layers already
@@ -222,7 +222,8 @@ Going from sparse to fully solid is a 23% penalty, not a multiple.
 | option | meaning |
 | --- | --- |
 | `--litho-thin` | thickness under the lightest tone |
-| `--litho-thick` | thickness under the darkest tone |
+| `--litho-step-layers` | space the tones this many whole layers apart |
+| `--litho-thick` | thickness under the darkest tone (ignored when step-layers is set) |
 | `--litho-layer` | layer height to snap thicknesses to |
 | `--litho-gamma` | shapes tone to thickness; above 1 thins and brightens the midtones |
 | `--litho-border` | width of a solid opaque frame, which reads black and stiffens the plate |
@@ -239,6 +240,23 @@ print time.
 *is* its layer count, so unsnapped values round at slice time and two tones can
 land on the same number of layers and print identically. The tool reports the
 layer count per tone and warns when two collapse.
+
+**Space the tones evenly, in layers.** Snapping alone is not enough: a
+thin-to-thick range only lands on an even ladder when its layer count happens to
+divide by the number of gaps. The original defaults of 0.6 to 3.0mm at 0.2mm are
+12 layers over 5 gaps, which comes out **2, 3, 2, 3, 2** — a wobble in the tone
+ladder owing nothing to the picture. `--litho-step-layers` sets the spacing
+directly and derives the thick end from it, so the ladder is even by
+construction. The default is 2 layers from a 2-layer base, giving 2, 4, 6, 8,
+10, 12 layers — 0.4 to 2.4mm. Runs that set a range instead are checked, and
+report the spacing they got along with the flag that would even it out.
+
+**Thin is what buys contrast**, since the brightest the picture gets is whatever
+the thinnest tone passes. Two layers is the floor worth trying, with two risks:
+the largest patch of lightest tone becomes a membrane a few centimetres across
+(29mm on one photo tested), and with only two layers nothing averages out the
+extrusion paths, so they can show as striping against the light. Both are cheap
+to rule out on a test strip.
 
 ### Calibrating the gamma
 
