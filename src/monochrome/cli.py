@@ -15,7 +15,7 @@ from . import framing as framing_mod
 from . import mesh as mesh_mod
 from . import sheet as sheet_mod
 from .render import PAGE_SIZES
-from .mesh import MeshOptions
+from .mesh import LithophaneOptions, MeshOptions
 from .tone import ToneOptions, parse_crop
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -25,6 +25,7 @@ app = typer.Typer(add_completion=False, help=__doc__)
 TONE_DEFAULTS = ToneOptions()
 REGION_DEFAULTS = RegionOptions()
 MESH_DEFAULTS = MeshOptions()
+LITHO_DEFAULTS = LithophaneOptions()
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
 
@@ -134,6 +135,34 @@ def pbn(
         help="Nozzle width in mm. Sets the sampling pitch at one column per bead, "
         "so detail tracks the printed size automatically.",
     ),
+    litho_thin: float = typer.Option(
+        LITHO_DEFAULTS.thin_mm,
+        "--litho-thin",
+        help="Thickness under the lightest tone, in mm.",
+    ),
+    litho_thick: float = typer.Option(
+        LITHO_DEFAULTS.thick_mm,
+        "--litho-thick",
+        help="Thickness under the darkest tone, in mm. Keep the whole plate thin: "
+        "contrast comes from the ratio of thickest to thinnest.",
+    ),
+    litho_layer: float = typer.Option(
+        LITHO_DEFAULTS.layer_mm,
+        "--litho-layer",
+        help="Layer height to snap thicknesses to. Printed flat, a tone's thickness "
+        "is its layer count, so unsnapped values round unpredictably.",
+    ),
+    litho_gamma: float = typer.Option(
+        LITHO_DEFAULTS.gamma,
+        "--litho-gamma",
+        help="Shapes tone to thickness. Above 1 thins the midtones and brightens "
+        "them. Depends on your filament; calibrate with 'monochrome litho-test'.",
+    ),
+    litho_border: float = typer.Option(
+        LITHO_DEFAULTS.border_mm,
+        "--litho-border",
+        help="Width of a solid opaque frame in mm. Reads black and stiffens the plate.",
+    ),
     stl_seam: float = typer.Option(
         MESH_DEFAULTS.seam_mm,
         "--stl-seam",
@@ -214,7 +243,8 @@ def pbn(
         "--formats",
         help="Comma-separated outputs: png (flat monochrome), lines (rasterized "
         "outlines for on-screen review), svg, pdf, stl (a 3-D relief where "
-        "brightness becomes height).",
+        "brightness becomes height), litho (a thin plate read by light through "
+        "it, where brightness becomes thinness).",
     ),
 ) -> None:
     """Convert photos to monochrome and emit printable paint-by-numbers templates."""
@@ -223,7 +253,7 @@ def pbn(
     if mode not in {"kmeans", "quantile", "uniform"}:
         raise typer.BadParameter("mode must be kmeans, quantile or uniform")
     wanted = {f.strip().lower() for f in formats.split(",") if f.strip()}
-    unknown = wanted - {"png", "lines", "svg", "pdf", "stl"}
+    unknown = wanted - {"png", "lines", "svg", "pdf", "stl", "litho"}
     if unknown:
         raise typer.BadParameter(f"unknown formats: {sorted(unknown)}")
 
@@ -235,6 +265,16 @@ def pbn(
 
     if palette not in {"fitted", "ramp"}:
         raise typer.BadParameter("palette must be fitted or ramp")
+
+    litho_opts = LithophaneOptions(
+        max_mm=stl_max,
+        nozzle_mm=stl_nozzle,
+        thin_mm=litho_thin,
+        thick_mm=litho_thick,
+        layer_mm=litho_layer,
+        gamma=litho_gamma,
+        border_mm=litho_border,
+    )
 
     mesh_opts = MeshOptions(
         max_mm=stl_max,
@@ -305,23 +345,71 @@ def pbn(
             write_pdf="pdf" in wanted,
             write_stl="stl" in wanted,
             mesh_opts=mesh_opts,
+            write_litho="litho" in wanted,
+            litho_opts=litho_opts,
         )
         typer.echo(f"{result.region_count} regions")
         for output in result.outputs:
             typer.echo(f"    {output}")
+        if result.litho_info:
+            litho = result.litho_info
+            layers = litho.get("layers")
+            shape = f"{litho['width_mm']:.0f} x {litho['depth_mm']:.0f} mm"
+            thin, thick = litho["thickness_mm"][-1], litho["thickness_mm"][0]
+            typer.echo(f"    litho {shape}, {thin:.1f}-{thick:.1f} mm thick")
+            if layers:
+                typer.echo(f"    layers per tone, dark to light: {layers}")
+            if litho["distinct_thicknesses"] < len(litho["thickness_mm"]):
+                typer.echo(
+                    "    warning: two tones snapped to the same thickness and will "
+                    "print identically. Widen --litho-thin/--litho-thick, or use a "
+                    "finer --litho-layer."
+                )
         if result.mesh_info:
             info = result.mesh_info
             typer.echo(
                 f"    relief {info['width_mm']:.0f} x {info['depth_mm']:.0f} x "
                 f"{info['height_mm']:.1f} mm, {info['triangles']:,} triangles"
             )
-            ratio = info.get("wall_ratio")
+            ratio = info.get("wall_ratio")  # noqa: F841 - used below
             if ratio is not None and ratio > mesh_mod.WALL_RATIO_WARN:
                 typer.echo(
                     f"    warning: {info['step_mm']:.1f}mm steps against a "
                     f"{info['narrowest_mm']:.1f}mm plateau is {ratio:.0f}:1 - thin "
                     f"walls may not print. Lower --stl-relief or raise --min-region."
                 )
+
+
+@app.command("litho-test")
+def litho_test(
+    out: Path = typer.Option(
+        Path("litho-test.stl"), "--out", "-o", help="Where to write the strip."
+    ),
+    levels: int = typer.Option(
+        TONE_DEFAULTS.levels, "--levels", "-l", min=2, max=24, help="How many tones."
+    ),
+    thin: float = typer.Option(LITHO_DEFAULTS.thin_mm, "--litho-thin"),
+    thick: float = typer.Option(LITHO_DEFAULTS.thick_mm, "--litho-thick"),
+    layer: float = typer.Option(LITHO_DEFAULTS.layer_mm, "--litho-layer"),
+    gamma: float = typer.Option(LITHO_DEFAULTS.gamma, "--litho-gamma"),
+    nozzle: float = typer.Option(LITHO_DEFAULTS.nozzle_mm, "--stl-nozzle"),
+    patch: float = typer.Option(20.0, "--patch", help="Size of each patch in mm."),
+) -> None:
+    """Emit a stepped test strip for calibrating --litho-gamma to your filament.
+
+    Print it, hold it to a light, and look at the spacing of the steps. If the
+    middle patches read darker than an even ladder, raise --litho-gamma and try
+    again. No amount of geometry can predict this: it depends on how much your
+    particular filament attenuates.
+    """
+    opts = LithophaneOptions(
+        nozzle_mm=nozzle, thin_mm=thin, thick_mm=thick, layer_mm=layer, gamma=gamma
+    )
+    info = mesh_mod.write_lithophane_test_strip(levels, opts, out, patch_mm=patch)
+    typer.echo(f"{out}  ({info['triangles']:,} triangles)")
+    typer.echo(f"  {info['width_mm']:.0f} x {info['depth_mm']:.0f} mm, {levels} patches")
+    typer.echo(f"  thickness, darkest to lightest: {info['thickness_mm']} mm")
+    typer.echo(f"  laid out {info['order']}")
 
 
 @app.command()

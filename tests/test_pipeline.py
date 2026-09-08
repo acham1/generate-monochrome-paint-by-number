@@ -463,3 +463,63 @@ class TestSeam:
         counts = TestMesh._edge_counts(mesh.build(heights, mesh.pitch_mm(heights.shape, opts)))
         assert min(counts.values()) >= 2
         assert not [e for e, n in counts.items() if n % 2]
+
+
+class TestLithophane:
+    """Thickness carries the picture, so the mapping inverts and snaps to layers."""
+
+    def test_lightest_tone_is_thinnest(self):
+        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0)
+        thickness = mesh.lithophane_thickness([0.0, 0.5, 1.0], opts)
+        assert thickness[0] == pytest.approx(3.0), "darkest blocks the most light"
+        assert thickness[-1] == pytest.approx(0.6), "lightest lets the most through"
+        assert np.all(np.diff(thickness) < 0)
+
+    def test_thickness_snaps_to_whole_layers(self):
+        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=3.0, layer_mm=0.2)
+        thickness = mesh.lithophane_thickness(np.linspace(0, 1, 6), opts)
+        layers = thickness / 0.2
+        assert layers == pytest.approx(np.round(layers))
+        assert (thickness / 0.2).min() >= 1.0
+
+    def test_snapping_never_produces_a_zero_thickness(self):
+        opts = mesh.LithophaneOptions(thin_mm=0.05, thick_mm=1.0, layer_mm=0.2)
+        thickness = mesh.lithophane_thickness([1.0], opts)
+        assert thickness[0] == pytest.approx(0.2), "floors at one layer, not zero"
+
+    def test_gamma_above_one_thins_the_midtones(self):
+        kw = dict(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0)
+        flat = mesh.lithophane_thickness([0.5], mesh.LithophaneOptions(gamma=1.0, **kw))
+        thinned = mesh.lithophane_thickness([0.5], mesh.LithophaneOptions(gamma=2.0, **kw))
+        assert thinned[0] < flat[0]
+
+    def test_gamma_leaves_the_endpoints_alone(self):
+        kw = dict(thin_mm=0.6, thick_mm=3.0, layer_mm=0.0)
+        for gamma in (1.0, 2.0, 3.0):
+            thickness = mesh.lithophane_thickness(
+                [0.0, 1.0], mesh.LithophaneOptions(gamma=gamma, **kw)
+            )
+            assert thickness[0] == pytest.approx(3.0)
+            assert thickness[1] == pytest.approx(0.6)
+
+    def test_too_narrow_a_range_collapses_tones(self):
+        """The condition the CLI warns about: two tones printing identically."""
+        opts = mesh.LithophaneOptions(thin_mm=0.6, thick_mm=0.8, layer_mm=0.2)
+        thickness = mesh.lithophane_thickness(np.linspace(0, 1, 6), opts)
+        assert len(np.unique(thickness)) < 6
+
+    def test_plate_is_closed(self, tmp_path):
+        region_map = np.array([[0, 1, 2], [2, 0, 1], [1, 2, 0]], dtype=np.int32)
+        opts = mesh.LithophaneOptions(max_mm=30.0, nozzle_mm=1.0, border_mm=2.0)
+        info = mesh.write_lithophane_stl(
+            region_map, [0, 1, 2], [0.0, 0.5, 1.0], opts, tmp_path / "l.stl"
+        )
+        assert info["distinct_thicknesses"] == 3
+        assert info["layers"] == [15, 9, 3]
+
+    def test_test_strip_has_one_patch_per_tone(self, tmp_path):
+        opts = mesh.LithophaneOptions(nozzle_mm=1.0)
+        info = mesh.write_lithophane_test_strip(6, opts, tmp_path / "s.stl", patch_mm=10.0)
+        assert info["width_mm"] == pytest.approx(60.0)
+        assert info["depth_mm"] == pytest.approx(10.0)
+        assert len(info["thickness_mm"]) == 6

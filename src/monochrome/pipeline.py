@@ -8,7 +8,7 @@ from pathlib import Path
 from . import mesh as mesh_mod
 from . import regions as regions_mod
 from . import render, tone
-from .mesh import MeshOptions
+from .mesh import LithophaneOptions, MeshOptions
 
 
 @dataclass
@@ -18,6 +18,7 @@ class Result:
     region_count: int
     levels: int
     mesh_info: dict | None = None
+    litho_info: dict | None = None
 
 
 def convert(
@@ -35,6 +36,8 @@ def convert(
     write_pdf: bool = True,
     write_stl: bool = False,
     mesh_opts: MeshOptions | None = None,
+    write_litho: bool = False,
+    litho_opts: LithophaneOptions | None = None,
 ) -> Result:
     lightness = tone.load_lightness(source, tone_opts.working_px, crop)
     prepared = tone.prepare(lightness, tone_opts)
@@ -86,10 +89,19 @@ def convert(
         )
         outputs.append(path)
 
+    litho_info = None
+    if write_litho:
+        path = out_dir / f"{stem}-litho.stl"
+        litho_info = mesh_mod.write_lithophane_stl(
+            region_map, region_levels, paint_values, litho_opts or LithophaneOptions(), path
+        )
+        outputs.append(path)
+
     return Result(
         source=source,
         outputs=outputs,
         region_count=len(found),
         levels=tone_opts.levels,
         mesh_info=mesh_info,
+        litho_info=litho_info,
     )

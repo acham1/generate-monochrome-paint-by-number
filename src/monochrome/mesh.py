@@ -67,6 +67,107 @@ class MeshOptions:
     separates the two crisply."""
 
 
+@dataclass(frozen=True)
+class LithophaneOptions:
+    """A plate whose thickness carries the picture, read by light through it.
+
+    Where the relief depends on shadows raking across a surface, this depends on
+    light passing through: thin lets it through and reads light, thick blocks it
+    and reads dark. That inverts the mapping, and it wants the whole plate thin,
+    since the contrast comes from the ratio between thinnest and thickest rather
+    than from any absolute depth.
+    """
+
+    max_mm: float = 170.0
+    """Longest edge of the finished plate."""
+    nozzle_mm: float = 0.4
+    """Sampling pitch, one grid column per bead, as for the relief."""
+    thin_mm: float = 0.6
+    """Thickness under the lightest tone. The floor is what the printer can make
+    reliably solid; too thin and it turns translucent-blotchy rather than bright."""
+    thick_mm: float = 3.0
+    """Thickness under the darkest tone. Light falls off steeply with thickness,
+    so this reaches near-opaque well before the plate becomes chunky."""
+    layer_mm: float = 0.2
+    """Snap every thickness to a whole number of layers. Printed flat, thickness
+    IS layer count, so unsnapped values round unpredictably at slice time and two
+    tones can collapse into the same number of layers."""
+    gamma: float = 1.0
+    """Shapes the tone-to-thickness curve. Above 1 thins the midtones, brightening
+    them; below 1 thickens them. The right value depends on how much your
+    filament attenuates, so it wants calibrating against a test print."""
+    border_mm: float = 0.0
+    """Width of a solid opaque frame. Reads black, and stiffens a thin plate."""
+
+
+def lithophane_thickness(paint_values, opts: LithophaneOptions) -> np.ndarray:
+    """Thickness in mm for each tone, thickest for the darkest.
+
+    Snapped to whole layers, because printed flat a tone's thickness is just its
+    layer count and the slicer will round to one anyway.
+    """
+    brightness = np.asarray(paint_values, dtype=np.float64)
+    darkness = np.clip(1.0 - brightness, 0.0, 1.0) ** opts.gamma
+    thickness = opts.thin_mm + (opts.thick_mm - opts.thin_mm) * darkness
+    if opts.layer_mm > 0:
+        layers = np.maximum(np.round(thickness / opts.layer_mm), 1.0)
+        thickness = layers * opts.layer_mm
+    return thickness
+
+
+def write_lithophane_stl(
+    region_map, region_levels, paint_values, opts: LithophaneOptions, path
+) -> dict:
+    """Build and write the lithophane plate."""
+    thickness = lithophane_thickness(paint_values, opts)
+    # Reuse the relief's sampler by handing it a palette that is already in
+    # millimetres: base 0, relief 1, so height comes out equal to thickness.
+    sampler = MeshOptions(max_mm=opts.max_mm, nozzle_mm=opts.nozzle_mm, base_mm=0.0, relief_mm=1.0)
+    heights = height_field(region_map, region_levels, thickness, sampler)
+    pixel_mm = pitch_mm(heights.shape, sampler)
+    if opts.border_mm > 0:
+        _set_border(heights, max(round(opts.border_mm / pixel_mm), 1), float(thickness.max()))
+    triangles = build(heights, pixel_mm)
+    write_stl(triangles, path)
+
+    layers = thickness / opts.layer_mm if opts.layer_mm > 0 else thickness
+    return {
+        "triangles": len(triangles),
+        "width_mm": heights.shape[1] * pixel_mm,
+        "depth_mm": heights.shape[0] * pixel_mm,
+        "height_mm": float(heights.max()),
+        "grid": heights.shape,
+        "thickness_mm": [round(float(t), 3) for t in thickness],
+        "layers": [int(round(float(n))) for n in layers] if opts.layer_mm > 0 else None,
+        "distinct_thicknesses": int(len(np.unique(np.round(thickness, 6)))),
+    }
+
+
+def write_lithophane_test_strip(
+    tones: int, opts: LithophaneOptions, path, patch_mm: float = 20.0
+) -> dict:
+    """A row of patches, one per tone, for holding up to a light.
+
+    The tone-to-thickness curve depends on how much a given filament attenuates,
+    which no amount of geometry can tell you. Print this, hold it up, and see
+    whether the steps look evenly spaced: if the middle patches read too dark,
+    raise --litho-gamma.
+    """
+    thickness = lithophane_thickness(np.linspace(0.0, 1.0, tones), opts)
+    pixel_mm = opts.nozzle_mm
+    patch_px = max(round(patch_mm / pixel_mm), 2)
+    heights = np.repeat(thickness[::-1], patch_px)[None, :].repeat(patch_px, axis=0)
+    triangles = build(heights, pixel_mm)
+    write_stl(triangles, path)
+    return {
+        "triangles": len(triangles),
+        "width_mm": heights.shape[1] * pixel_mm,
+        "depth_mm": heights.shape[0] * pixel_mm,
+        "thickness_mm": [round(float(t), 3) for t in thickness],
+        "order": "lightest (thinnest) first",
+    }
+
+
 def pitch_mm(grid_shape: tuple[int, int], opts: MeshOptions) -> float:
     """Millimetres per grid column, once the picture is sampled."""
     return opts.max_mm / max(grid_shape)

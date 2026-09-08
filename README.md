@@ -29,8 +29,10 @@ Each source image produces four files:
 | `<name>-pbn.pdf` | the printable template: outlines, numbers, and the swatch key |
 | `<name>-pbn.svg` | the same template as vectors, for editing or plotting |
 | `<name>-relief.stl` | a 3-D relief where brightness becomes height, for printing |
+| `<name>-litho.stl` | a thin plate read by light through it, brightness becoming thinness |
 
-Pick with `--formats` (default `png,lines,svg,pdf`); add `stl` for the relief.
+Pick with `--formats` (default `png,lines,svg,pdf`); add `stl` for the relief or
+`litho` for the lithophane.
 
 The printed page carries only a short identifier — by default the trailing
 digits of the filename — never the filename itself, so a template can be handed
@@ -171,6 +173,88 @@ columns it is made from, give or take float32 rounding. A few dozen edges per
 model are shared by four faces where two regions touch only at a diagonal
 corner; slicers handle those. At the default `--stl-px 300` a model is roughly
 280k triangles and 13MB, so a whole folder adds up quickly.
+
+## The lithophane
+
+```sh
+uv run monochrome pbn photo.jpg -o out --formats litho --stl-max 170 --litho-border 6
+```
+
+The same regions, but thickness carries the picture instead of height: thin
+passes light and reads bright, thick blocks it and reads dark. Hold the plate up
+to a window or a light panel.
+
+**This reads far better than the relief**, and the reason is worth stating. The
+relief depends on steps shadowing each other, which only happens near a boundary
+and only under raking light, so broad areas stay flat and it comes out looking
+like a woodcut. Transmission does not care where the light is or how glossy the
+surface is - every square millimetre of the plate reports its own thickness. The
+tones come through as tones.
+
+It is also about **five times cheaper to print**: a 170mm plate is around 35cm³
+against 160cm³ for the equivalent relief, because it is millimetres thick rather
+than centimetres.
+
+| option | meaning |
+| --- | --- |
+| `--litho-thin` | thickness under the lightest tone |
+| `--litho-thick` | thickness under the darkest tone |
+| `--litho-layer` | layer height to snap thicknesses to |
+| `--litho-gamma` | shapes tone to thickness; above 1 thins and brightens the midtones |
+| `--litho-border` | width of a solid opaque frame, which reads black and stiffens the plate |
+
+Size and sampling come from `--stl-max` and `--stl-nozzle`, shared with the relief.
+
+**Keep the plate thin.** Contrast comes from the *ratio* of thickest to
+thinnest, not from absolute depth, so there is nothing to gain by making it
+chunky and a good deal to lose - light falls off steeply with thickness, and
+past a few millimetres the dark end is opaque and the extra material only costs
+print time.
+
+**Thicknesses snap to whole layers.** Printed flat, a tone's thickness simply
+*is* its layer count, so unsnapped values round at slice time and two tones can
+land on the same number of layers and print identically. The tool reports the
+layer count per tone and warns when two collapse.
+
+### Calibrating the gamma
+
+The right tone-to-thickness curve depends on how much a particular filament
+attenuates, and that is not something geometry can predict. Modelling
+transmission as Beer-Lambert and scoring how evenly the tones land in L\*:
+
+| filament attenuation | best gamma | gamma 1.0 | gamma 1.8 | gamma 2.5 |
+| --- | --- | --- | --- | --- |
+| k = 1.0/mm (3mm passes 5%) | **1.0** | 7.3 | 11.1 | 18.1 |
+| k = 1.8/mm (3mm passes 0.5%) | **1.8** | 16.9 | 10.7 | 22.3 |
+
+(lower is a more even ladder of tones)
+
+There is no universal answer - a translucent filament wants linear thickness, a
+dense one wants the midtones thinned. So the default is linear, and there is a
+test strip for settling it:
+
+```sh
+uv run monochrome litho-test -o litho-test.stl
+```
+
+That prints a row of patches, one per tone, thinnest first. Hold it to a light:
+if the middle patches read darker than an even ladder, raise `--litho-gamma` and
+try again. Beware pushing it too far - past about 2.5 the thinnest tones saturate
+and stop being distinguishable at all, which the thickness-collapse warning
+cannot see because the thicknesses are still numerically different.
+
+### Printing one
+
+Print flat on the bed, and view it from the **bed side** - it comes off the sheet
+smooth and glossy, while the stepped side faces the light.
+
+**Use 100% infill.** This matters more here than any other setting: a sparse
+infill pattern sits in the light path and will show through as a visible grid.
+
+Everything else is as for the relief - ironing off, flow dialled in - except that
+filament colour advice inverts. A relief wants light matte to show shading;
+a lithophane wants whatever transmits evenly, and white or natural PLA is the
+usual choice.
 
 ## Checking the framing
 
