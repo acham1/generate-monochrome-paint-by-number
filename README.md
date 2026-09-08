@@ -191,9 +191,33 @@ like a woodcut. Transmission does not care where the light is or how glossy the
 surface is - every square millimetre of the plate reports its own thickness. The
 tones come through as tones.
 
-It is also about **five times cheaper to print**: a 170mm plate is around 35cm³
-against 160cm³ for the equivalent relief, because it is millimetres thick rather
-than centimetres.
+It is cheaper to print, though less dramatically than raw volume suggests, and
+the difference is worth spelling out because a lithophane has to be printed
+solid. Comparing geometry alone is misleading: the relief would never be printed
+solid either. Modelling both with typical shells - five top layers, four bottom,
+0.2mm - and 15% sparse infill in the relief:
+
+| | geometry | filament | PLA | layers |
+| --- | --- | --- | --- | --- |
+| relief, 15% infill | 194cm³ | 60cm³ | ~75g | 75 |
+| lithophane, 100% solid | 38cm³ | 38cm³ | ~47g | 15 |
+
+So the lithophane takes about **two thirds of the relief's filament**, not a
+fifth. Still cheaper, and much faster for a reason volume does not capture: 15
+layers against 75.
+
+The solid-infill requirement costs less than it sounds, because a thin plate is
+nearly all shell anyway. At 0.6 to 1.6mm the top and bottom solid layers already
+exceed the full thickness, so those tones are solid whatever the setting; only
+the two darkest have any interior at all:
+
+| infill | filament | of solid |
+| --- | --- | --- |
+| 15% | 30.7cm³ | 81% |
+| 50% | 33.6cm³ | 89% |
+| 100% | 37.7cm³ | 100% |
+
+Going from sparse to fully solid is a 23% penalty, not a multiple.
 
 | option | meaning |
 | --- | --- |
